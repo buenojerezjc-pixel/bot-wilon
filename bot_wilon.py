@@ -7,9 +7,6 @@ INSTANCE_NAME = "wilon_bot"
 API_URL = "https://evolution-api-wilon.onrender.com"
 API_KEY = "123456"
 
-# Inicializar cliente de OpenAI (utiliza la variable de entorno OPENAI_API_KEY)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 
 def responder_whatsapp(numero, texto_mensaje):
     """Envía respuesta de texto directa sin retardo (delay)."""
@@ -41,10 +38,19 @@ def responder_whatsapp(numero, texto_mensaje):
 
 def obtener_recomendacion_anime(prompt_usuario):
     """Consulta a la API de OpenAI para obtener una recomendación de anime personalizada."""
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    # Validamos que la API Key exista antes de llamar a OpenAI
+    if not api_key:
+        return "⚠️ Error: La API Key de OpenAI no está configurada en Render."
+
     if not prompt_usuario.strip():
         prompt_usuario = "Recomiéndame un anime popular muy bueno de cualquier género."
 
     try:
+        # Inicializamos el cliente dentro de la función para mayor estabilidad
+        client = OpenAI(api_key=api_key)
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -63,4 +69,4 @@ def obtener_recomendacion_anime(prompt_usuario):
         return response.choices[0].message.content
     except Exception as e:
         print(f"Error con OpenAI: {e}")
-        return "❌ Ocurrió un error al generar la recomendación. Intenta de nuevo."
+        return f"❌ Ocurrió un error al generar la recomendación: {e}"
