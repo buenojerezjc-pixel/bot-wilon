@@ -8,7 +8,7 @@ EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE")
 
-# Variable global para controlar el estado del bot
+# Variable global definida FUERA de la función
 bot_activo = True
 
 
@@ -17,6 +17,8 @@ def webhook():
     global bot_activo
 
     request_json = request.get_json(silent=True) or {}
+
+    # Parseo seguro
     data = request_json.get("data", {})
     if isinstance(data, list) and len(data) > 0:
         data = data[0]
@@ -39,16 +41,13 @@ def webhook():
         comando = text.strip().lower()
         respuesta_texto = None
 
-        # --- COMANDOS PARA ENCENDER Y APAGAR ---
+        # Desactivar / Activar
         if comando == "#desactivar wilon":
             bot_activo = False
-            respuesta_texto = "🤫 *Wilon Bot ha sido desactivado.* No responderé a más comandos hasta que me vuelvas a activar."
-
+            respuesta_texto = "🤫 *Wilon Bot ha sido desactivado.*"
         elif comando == "#activar wilon":
             bot_activo = True
-            respuesta_texto = "🔊 *Wilon Bot ha sido activado.* ¡Estoy listo de nuevo!"
-
-        # --- COMANDOS SOLO SI EL BOT ESTÁ ACTIVO ---
+            respuesta_texto = "🔊 *Wilon Bot ha sido activado.*"
         elif bot_activo:
             if comando.startswith("#hola"):
                 respuesta_texto = "¡Hola! 👋 Soy *Wilon Bot*. Escribe *#ayuda* para ver mis opciones."
@@ -60,7 +59,6 @@ def webhook():
                     "• *#activar wilon* - Enciende el bot nuevamente."
                 )
 
-        # Envío del mensaje si aplica
         if respuesta_texto:
             url = f"{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}"
             headers = {
@@ -75,7 +73,9 @@ def webhook():
                 "delay": 1000,
                 "linkPreview": False,
             }
-            requests.post(url, json=payload, headers=headers)
+
+            res = requests.post(url, json=payload, headers=headers)
+            print(f"Respuesta de Evolution API: {res.status_code}")
 
     return jsonify({"status": "success"}), 200
 
