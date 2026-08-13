@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Escanear QR WhatsApp</title>
+</head>
+<body style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100vh; background-color:#111b21; margin:0; font-family:sans-serif; color:white;">
+    
+    <h2>Escanea el QR con WhatsApp</h2>
+    
+    <img id="qrImage" src="" alt="Cargando QR..." style="border: 8px solid white; border-radius: 12px; width: 320px; height: 320px; display:none;" />
+    
+    <p id="status" style="margin-top:20px; color:#00a884;">Obteniendo QR desde Render...</p>
+
+    <button onclick="obtenerQR()" style="margin-top:15px; padding:10px 20px; background-color:#00a884; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">
+        🔄 Recargar QR
+    </button>
+
+    <script>
+        function obtenerQR() {
+            const status = document.getElementById("status");
+            const imgElement = document.getElementById("qrImage");
+
+            status.innerText = "Obteniendo nuevo QR...";
+            imgElement.style.display = "none";
+
+            fetch("https://evolution-api-latest-bkbs.onrender.com/instance/connect/wilon", {
+                headers: {
+                    "apikey": "123456"
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                const base64Data = data.base64 || (data.qrcode && data.qrcode.base64);
+
+                if (base64Data) {
+                    imgElement.src = base64Data;
+                    imgElement.style.display = "block";
+                    status.innerText = "Dispositivos vinculados → Vincular un dispositivo";
+                } else if (data.instance && data.instance.state === "open") {
+                    status.innerText = "✅ ¡Ya estás conectado a WhatsApp!";
+                } else {
+                    status.innerText = "No hay QR disponible. Si no has vinculado, presiona Recargar QR.";
+                }
+            })
+            .catch(err => {
+                status.innerText = "Error de conexión con Render: " + err;
+            });
+        }
+
+        // Carga el QR al abrir la página
+        obtenerQR();
+    </script>
+</body>
+</html>
