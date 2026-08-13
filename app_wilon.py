@@ -8,12 +8,15 @@ EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "").rstrip("/")
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY")
 EVOLUTION_INSTANCE = os.getenv("EVOLUTION_INSTANCE")
 
+# Variable global para controlar el estado del bot
+bot_activo = True
+
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    request_json = request.get_json(silent=True) or {}
+    global bot_activo
 
-    # Parseo seguro de la data
+    request_json = request.get_json(silent=True) or {}
     data = request_json.get("data", {})
     if isinstance(data, list) and len(data) > 0:
         data = data[0]
@@ -33,28 +36,46 @@ def webhook():
             or ""
         )
 
-        if text.strip().lower().startswith("#hola"):
-            # URL y headers alineados con Evolution API v2
+        comando = text.strip().lower()
+        respuesta_texto = None
+
+        # --- COMANDOS PARA ENCENDER Y APAGAR ---
+        if comando == "#desactivar wilon":
+            bot_activo = False
+            respuesta_texto = "🤫 *Wilon Bot ha sido desactivado.* No responderé a más comandos hasta que me vuelvas a activar."
+
+        elif comando == "#activar wilon":
+            bot_activo = True
+            respuesta_texto = "🔊 *Wilon Bot ha sido activado.* ¡Estoy listo de nuevo!"
+
+        # --- COMANDOS SOLO SI EL BOT ESTÁ ACTIVO ---
+        elif bot_activo:
+            if comando.startswith("#hola"):
+                respuesta_texto = "¡Hola! 👋 Soy *Wilon Bot*. Escribe *#ayuda* para ver mis opciones."
+            elif comando.startswith("#ayuda") or comando.startswith("#menu"):
+                respuesta_texto = (
+                    "🤖 *WILON BOT*\n\n"
+                    "• *#hola* - Saludo inicial.\n"
+                    "• *#desactivar wilon* - Apaga el bot temporalmente.\n"
+                    "• *#activar wilon* - Enciende el bot nuevamente."
+                )
+
+        # Envío del mensaje si aplica
+        if respuesta_texto:
             url = f"{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}"
             headers = {
                 "apikey": EVOLUTION_API_KEY,
                 "Content-Type": "application/json",
             }
-
-            # En Evolution API v2 el número debe ser limpio y el campo es 'text'
             clean_number = remote_jid.split("@")[0]
 
             payload = {
                 "number": clean_number,
-                "text": "¡Hola! 👋 Tu bot ya está respondiendo perfectamente desde Render.",
-                "delay": 1200,
+                "text": respuesta_texto,
+                "delay": 1000,
                 "linkPreview": False,
             }
-
-            res = requests.post(url, json=payload, headers=headers)
-            print(
-                f"Respuesta de Evolution API: {res.status_code} - {res.text}"
-            )
+            requests.post(url, json=payload, headers=headers)
 
     return jsonify({"status": "success"}), 200
 
