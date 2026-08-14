@@ -1,96 +1,72 @@
 import os
-from flask import Flask, request, jsonify
+import requests
 from openai import OpenAI
 
-app = Flask(__name__)
+# Configuración de Evolution API
+INSTANCE_NAME = "wilon_bot"
+API_URL = "https://evolution-api-wilon.onrender.com"
+API_KEY = "123456"
 
-# Inicializar cliente de OpenAI usando la Variable de Entorno
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# -------------------------------------------------------------------
-# 🟢 1. RUTA RAÍZ PARA EL CRONJOB (Mantiene el servidor despierto 24/7)
-# -------------------------------------------------------------------
-@app.route("/", methods=["GET"])
-def health_check():
-    return "OK - Servidor Wilon Activo", 200
+def responder_whatsapp(numero, texto_mensaje):
+    """Envía respuesta de texto directa sin retardo (delay)."""
+    url = f"{API_URL}/message/sendText/{INSTANCE_NAME}"
+    headers = {
+        "apikey": API_KEY,
+        "Content-Type": "application/json"
+    }
 
-# -------------------------------------------------------------------
-# 🤖 2. FUNCIÓN PARA CONSULTAR A OPENAI
-# -------------------------------------------------------------------
-def consultar_openai(prompt_texto):
-    """Envía la consulta a la API de OpenAI (GPT-4o-mini)."""
+    # Aseguramos enviar solo el número limpio (ej. 573108788739)
+    numero_limpio = numero.split("@")[0]
+
+    # Payload simplificado e inmediato:
+    payload = {
+        "number": numero_limpio,
+        "text": texto_mensaje,
+        "textMessage": {"text": texto_mensaje}
+    }
+
     try:
+        response = requests.post(url, json=payload, headers=headers)
+        print(f"Estado de envío: {response.status_code}")
+        print(f"Respuesta API: {response.text}")
+        return response.json()
+    except Exception as e:
+        print(f"❌ Error al enviar mensaje: {e}")
+        return None
+
+
+def obtener_recomendacion_anime(prompt_usuario):
+    """Consulta a la API de OpenAI para obtener una recomendación de anime personalizada."""
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    # Validamos que la API Key exista antes de llamar a OpenAI
+    if not api_key:
+        return "⚠️ Error: La API Key de OpenAI no está configurada en Render."
+
+    if not prompt_usuario.strip():
+        prompt_usuario = "Recomiéndame un anime popular muy bueno de cualquier género."
+
+    try:
+        # Inicializamos el cliente dentro de la función para mayor estabilidad
+        client = OpenAI(api_key=api_key)
+
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
-                    "role": "system", 
-                    "content": "Eres Wilon, un asistente de WhatsApp experto en anime, simpático, conciso y directo."
+                    "role": "system",
+                    "content": (
+                        "Eres un experto recomendador de anime entusiasta y conciso. "
+                        "Da recomendaciones breves, entretenidas, formateadas con emojis y negritas para WhatsApp. "
+                        "Incluye: Título, Género, Número de episodios y un resumen sin spoilers de máximo 2 oraciones."
+                    )
                 },
-                {"role": "user", "content": prompt_texto}
+                {"role": "user", "content": prompt_usuario}
             ],
-            max_tokens=350,
-            temperature=0.7,
+            max_tokens=300
         )
-        return response.choices[0].message.content.strip()
+        return response.choices[0].message.content
     except Exception as e:
-        return f"⚠️ Ocurrió un error al consultar con la IA: {str(e)}"
-
-# -------------------------------------------------------------------
-# 📲 3. FORMATO DE RESPUESTA PARA EVOLUTION API
-# -------------------------------------------------------------------
-def responder_whatsapp(texto_respuesta):
-    """Formatea la respuesta JSON que espera Render / Evolution API."""
-    return jsonify({
-        "status": "success",
-        "response": texto_respuesta
-    }), 200
-
-# -------------------------------------------------------------------
-# 📩 4. RUTA WEBHOOK (Recibe los mensajes de WhatsApp)
-# -------------------------------------------------------------------
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.get_json()
-
-    # Validar que lleguen datos
-    if not data:
-        return jsonify({"status": "ignored", "reason": "No JSON data"}), 200
-
-    try:
-        # Extraer el mensaje y el emisor según la estructura de Evolution API
-        data_inner = data.get("data", {})
-        message_data = data_inner.get("message", {})
-        
-        # Obtener el texto del mensaje
-        texto_mensaje = (
-            message_data.get("conversation") or 
-            message_data.get("extendedTextMessage", {}).get("text") or 
-            ""
-        ).strip()
-
-        # Si el mensaje incluye el comando #anime
-        if "#anime" in texto_mensaje.lower():
-            # Extraer el parámetro (ejemplo: "#anime Naruto" -> "Naruto")
-            partes = texto_mensaje.split("#anime", 1)
-            busqueda = partes[1].strip() if len(partes) > 1 else ""
-
-            if busqueda:
-                prompt = f"Dame un resumen conciso, opinión y calificación del anime: {busqueda}"
-            else:
-                prompt = "Dame una recomendación rápida de un anime popular y divertido de ver hoy en día."
-
-            # Consultar a la IA
-            respuesta_ia = consultar_openai(prompt)
-            return responder_whatsapp(respuesta_ia)
-
-    except Exception as e:
-        print(f"Error procesando el webhook: {e}")
-
-    return jsonify({"status": "ignored"}), 200
-
-# -------------------------------------------------------------------
-# 🚀 5. INICIALIZACIÓN DEL SERVIDOR
-# -------------------------------------------------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+        print(f"Error con OpenAI: {e}")
+        return f"❌ Ocurrió un error al generar la recomendación: {e}"
