@@ -4,14 +4,18 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Configuración de tu API de Evolution
+# ----------------------------------------------------
+# CONFIGURACIÓN DE EVOLUTION API
+# ----------------------------------------------------
 EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
 INSTANCE_NAME = "wilon"
-API_KEY = "xaipslkt8clk75y6w1npJ" # Tu API Key real de Evolution
+
+# Tu API Key completa extraída de la sesión activa
+API_KEY = "xaipslkt8clk75y6w1npj"
 
 
 def enviar_mensaje_whatsapp(numero, texto):
-    """Función para enviar mensaje de respuesta a través de Evolution API"""
+    """Envía la respuesta a WhatsApp a través de Evolution API"""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
     headers = {
@@ -19,7 +23,6 @@ def enviar_mensaje_whatsapp(numero, texto):
         "apikey": API_KEY
     }
     
-    # Payload limpio esperado por Evolution API
     payload = {
         "number": numero,
         "text": texto
@@ -34,7 +37,7 @@ def enviar_mensaje_whatsapp(numero, texto):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Ruta que recibe las notificaciones de WhatsApp desde Evolution API"""
+    """Ruta del webhook que procesa los mensajes de WhatsApp"""
     data = request.get_json()
     
     print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
@@ -44,13 +47,14 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # Evitar bucle respondiendo a nuestros propios mensajes
+            # Evitar responder a los mensajes enviados por el propio bot
             from_me = key_obj.get('fromMe', False)
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
             remote_jid = key_obj.get('remoteJid', '')
             
+            # Obtener el texto del mensaje
             texto_mensaje = ""
             if 'conversation' in message_obj:
                 texto_mensaje = message_obj['conversation']
@@ -60,7 +64,9 @@ def webhook():
             texto_limpio = texto_mensaje.strip().lower()
             print(f"💬 Mensaje de [{remote_jid}]: '{texto_limpio}'")
             
-            # LÓGICA DE COMANDOS
+            # ----------------------------------------------------
+            # LÓGICA DE COMANDOS DEL BOT
+            # ----------------------------------------------------
             if texto_limpio == '#hola':
                 respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
                 enviar_mensaje_whatsapp(remote_jid, respuesta)
@@ -69,7 +75,7 @@ def webhook():
                 respuesta = "🍿 ¡Sección Anime! Próximamente recomendaciones y listas actualizadas."
                 enviar_mensaje_whatsapp(remote_jid, respuesta)
 
-            elif texto_limpio == '#menu' or texto_limpio == '#ayuda':
+            elif texto_limpio in ['#menu', '#ayuda']:
                 respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
                 enviar_mensaje_whatsapp(remote_jid, respuesta)
 
