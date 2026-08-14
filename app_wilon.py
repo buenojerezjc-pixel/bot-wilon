@@ -49,16 +49,16 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # Evitar bucles omitiendo mensajes propios
+            # Omitir mensajes enviados por el propio bot
             from_me = key_obj.get('fromMe', False)
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
-            # Extraer número telefónico real (omitir ID @lid)
+            # Priorizar el 'sender' (número de teléfono real) antes que remoteJid
             sender_raw = data['data'].get('sender', '')
             remote_jid = key_obj.get('remoteJid', '')
             
-            if '@lid' in remote_jid and sender_raw:
+            if sender_raw:
                 destino = sender_raw.split('@')[0]
             else:
                 destino = remote_jid.split('@')[0]
