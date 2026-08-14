@@ -17,7 +17,7 @@ API_KEY = "MiClaveSuperSecreta123"
 def enviar_mensaje_whatsapp(destino, texto):
     """
     Envía la respuesta a WhatsApp al MISMO CHAT de origen
-    (Funciona transparente para números individuales o IDs de grupo @g.us)
+    (Soporta grupos @g.us y números reales individuales)
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -54,35 +54,36 @@ def webhook():
             
             remote_jid = key_obj.get('remoteJid', '')
             remote_alt = key_obj.get('remoteJidAlt', '')
+            sender_raiz = data.get('sender', '')
+            participant = key_obj.get('participant', '')
             from_me = key_obj.get('fromMe', False)
             
             # ----------------------------------------------------
-            # REGLA DEL DUENO DEL QR (fromMe)
+            # REGLA DEL DUEÑO DEL QR (fromMe)
             # ----------------------------------------------------
-            # Si el mensaje lo envía la misma línea del QR:
-            # - Permitir SOLO si está dentro de un grupo (@g.us)
-            # - Ignorar si es en chat privado
+            # Si el mensaje lo envía la misma línea del QR, solo responde en grupos
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR EL CHAT DESTINO EXACTO
+            # DETERMINAR EL CHAT DESTINO EXACTO Y VÁLIDO
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # Si viene de un grupo, el destino ES el ID del grupo
+                # 1. Si es un GRUPO: Respondemos al ID del grupo (@g.us)
                 destino = remote_jid
-            elif '@s.whatsapp.net' in remote_alt:
-                # Chat privado con privacidad LID: responde a la persona que escribió
-                destino = remote_alt.split('@')[0]
-            elif '@s.whatsapp.net' in remote_jid:
-                # Chat privado estándar
-                destino = remote_jid.split('@')[0]
             else:
-                participant = key_obj.get('participant', '')
-                if '@s.whatsapp.net' in participant:
-                    destino = participant.split('@')[0]
+                # 2. Si es CHAT PRIVADO: Buscamos cuál candidato tiene un número real (@s.whatsapp.net)
+                numero_candidato = ""
+                for candidato in [remote_alt, sender_raiz, participant, remote_jid]:
+                    if candidato and '@s.whatsapp.net' in candidato and '@lid' not in candidato:
+                        numero_candidato = candidato
+                        break
+                
+                if numero_candidato:
+                    destino = numero_candidato.split('@')[0]
                 else:
-                    destino = remote_jid.split('@')[0]
+                    # Respaldo en caso de que venga solo el número en sender_raiz
+                    destino = sender_raiz.split('@')[0] if sender_raiz else remote_jid.split('@')[0]
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
