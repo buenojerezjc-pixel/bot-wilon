@@ -66,7 +66,6 @@
 </div>
 
 <script>
-    // URL del servicio activo de Evolution API en Render
     const API_URL = "https://evolution-wilon-api.onrender.com";
     const API_KEY = "42964047a04943399d3ba7e63f92d83e";
     const INSTANCE_NAME = "wilon";
@@ -77,20 +76,18 @@
         const qrContainer = document.getElementById("qr-container");
 
         btn.disabled = true;
-        statusText.innerText = "Conectando con la API y buscando QR...";
+        statusText.innerText = "Conectando con la API...";
 
         try {
-            // 1. Intentar conectar y obtener el QR de la instancia 'wilon'
+            // 1. Intentar conectar/obtener QR
             let response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                 method: "GET",
                 headers: { "apikey": API_KEY }
             });
 
-            let data = await response.json();
-
-            // 2. Si la instancia no existe, la creamos primero
-            if (response.status === 404 || (data.message && data.message.includes("not found"))) {
-                statusText.innerText = "Creando instancia por primera vez...";
+            // Si la instancia no existe, la creamos
+            if (response.status === 404) {
+                statusText.innerText = "Creando instancia...";
                 await fetch(`${API_URL}/instance/create`, {
                     method: "POST",
                     headers: {
@@ -104,29 +101,44 @@
                     })
                 });
 
-                // Volver a consultar conexión tras la creación
+                // Volver a pedir conexión
                 response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                     method: "GET",
                     headers: { "apikey": API_KEY }
                 });
-                data = await response.json();
             }
 
-            // 3. Extraer e imprimir la imagen del QR
-            const qrBase64 = data.base64 || data.code || (data.qrcode ? data.qrcode.base64 : null);
+            let data = await response.json();
+            console.log("Respuesta Evolution API:", data);
 
+            // 2. Múltiples comprobaciones para capturar el QR según la respuesta de Evolution API v2
+            let qrBase64 = null;
+
+            if (typeof data === "string" && data.startsWith("data:image")) {
+                qrBase64 = data;
+            } else if (data.base64) {
+                qrBase64 = data.base64;
+            } else if (data.code) {
+                qrBase64 = data.code;
+            } else if (data.qrcode && data.qrcode.base64) {
+                qrBase64 = data.qrcode.base64;
+            } else if (data.qrcode && typeof data.qrcode === "string") {
+                qrBase64 = data.qrcode;
+            }
+
+            // 3. Renderizar resultado
             if (qrBase64) {
                 const imageSrc = qrBase64.startsWith("data:image") ? qrBase64 : `data:image/png;base64,${qrBase64}`;
-                qrContainer.innerHTML = `<img src="${imageSrc}" alt="Código QR WhatsApp"><p class="status">¡Escanea este código desde WhatsApp!</p>`;
-            } else if (data.instance?.state === "open") {
-                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡WhatsApp ya está VINCULADO y activo! 🎉</p>`;
+                qrContainer.innerHTML = `<img src="${imageSrc}" alt="Código QR WhatsApp"><p class="status">¡Escanea este código con WhatsApp!</p>`;
+            } else if (data.instance?.state === "open" || data.status === "open") {
+                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡El WhatsApp ya está VINCULADO y activo! 🎉</p>`;
             } else {
-                statusText.innerText = "Cargando código QR... Presiona el botón una vez más.";
+                statusText.innerText = "Respuesta recibida pero sin imagen. Haz clic nuevamente en 3 segundos.";
             }
 
         } catch (error) {
             console.error("Error:", error);
-            statusText.innerText = "Error al conectar con Evolution API. Reintenta en unos segundos.";
+            statusText.innerText = "Error al conectar con Evolution API.";
         } finally {
             btn.disabled = false;
         }
