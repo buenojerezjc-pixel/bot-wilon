@@ -49,19 +49,28 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # Omitir mensajes enviados por el propio bot
+            # Omitir mensajes propios
             from_me = key_obj.get('fromMe', False)
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
-            # Priorizar el 'sender' (número de teléfono real) antes que remoteJid
-            sender_raw = data['data'].get('sender', '')
+            # --- EXTRACCIÓN INFALIBLE DEL NÚMERO REAL ---
+            sender_field = data['data'].get('sender', '')
+            remote_alt = key_obj.get('remoteJidAlt', '')
             remote_jid = key_obj.get('remoteJid', '')
             
-            if sender_raw:
-                destino = sender_raw.split('@')[0]
+            # Buscamos cual de los 3 valores contiene un número telefónico real (sin @lid)
+            numero_candidato = ""
+            for item in [sender_field, remote_alt, remote_jid]:
+                if item and '@lid' not in item and '@s.whatsapp.net' in item:
+                    numero_candidato = item
+                    break
+            
+            if numero_candidato:
+                destino = numero_candidato.split('@')[0]
             else:
-                destino = remote_jid.split('@')[0]
+                # Si todo falla, extraemos el sender directo
+                destino = sender_field.split('@')[0] if sender_field else remote_jid.split('@')[0]
             
             # Captura del contenido del mensaje
             texto_mensaje = ""
@@ -71,7 +80,7 @@ def webhook():
                 texto_mensaje = message_obj['extendedTextMessage']['text']
                 
             texto_limpio = texto_mensaje.strip().lower()
-            print(f"💬 Mensaje de [{destino}]: '{texto_limpio}'")
+            print(f"💬 Mensaje enviado a destino: [{destino}] con texto: '{texto_limpio}'")
             
             # ----------------------------------------------------
             # LÓGICA DE COMANDOS
