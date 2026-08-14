@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Conectar Wilon a WhatsApp</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #111b21; color: white; margin: 0; }
+        .card { background: #202c33; padding: 30px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        img { width: 250px; height: 250px; border-radius: 8px; margin: 15px 0; background: white; padding: 10px; display: none; }
+        button { background: #00a884; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        button:hover { background: #008f6f; }
+        #status { margin-top: 10px; color: #aebac1; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Vincular WhatsApp Wilon 📲</h2>
+        <button onclick="obtenerQR()">Generar Código QR</button>
+        <br>
+        <img id="qrImage" src="" alt="Código QR">
+        <p id="status">Haz clic en el botón para obtener el QR fresquito.</p>
+    </div>
+
+    <script>
+        async function obtenerQR() {
+            const status = document.getElementById("status");
+            const imgElement = document.getElementById("qrImage");
+            
+            status.innerText = "Cargando código QR desde Render...";
+            imgElement.style.display = "none";
+
+            try {
+                const res = await fetch("https://evolution-wilon-api.onrender.com/instance/connect/wilon");
+                const data = await res.json();
+                
+                const base64Data = data.base64 || (data.qrcode && data.qrcode.base64);
+
+                if (base64Data) {
+                    imgElement.src = base64Data;
+                    imgElement.style.display = "block";
+                    status.innerText = "¡Escanéalo rápido desde WhatsApp -> Dispositivos vinculados!";
+                } else if (data.instance && data.instance.state === "open") {
+                    status.innerText = "✅ ¡Ya estás completamente conectado a WhatsApp!";
+                } else {
+                    status.innerText = "No se pudo generar el QR. Revisa la consola.";
+                }
+            } catch (err) {
+                status.innerText = "Error de conexión con Render: " + err;
+            }
+        }
+    </script>
+</body>
+</html>
