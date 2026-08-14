@@ -54,3 +54,7 @@ def webhook():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
+    # --- RUTA RAÍZ PARA CRON-JOB / DESPERTADOR ---
+@app.route('/', methods=['GET'])
+def index():
+    return "¡Wilon está despierto y listo! 🤖", 200
