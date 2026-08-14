@@ -54,7 +54,45 @@ def webhook():
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
+            # 1. Intentamos obtener el número real desde sender o remoteJid
+            sender_raw = data['data'].get('sender', '')
             remote_jid = key_obj.get('remoteJid', '')
+            
+            # Si el remoteJid termina en @lid (ID de privacidad), usamos el sender real
+            if '@lid' in remote_jid and sender_raw:
+                destino = sender_raw.split('@')[0]
+            else:
+                destino = remote_jid.split('@')[0]
+            
+            # Captura del contenido del mensaje
+            texto_mensaje = ""
+            if 'conversation' in message_obj:
+                texto_mensaje = message_obj['conversation']
+            elif 'extendedTextMessage' in message_obj and 'text' in message_obj['extendedTextMessage']:
+                texto_mensaje = message_obj['extendedTextMessage']['text']
+                
+            texto_limpio = texto_mensaje.strip().lower()
+            print(f"💬 Mensaje de [{destino}]: '{texto_limpio}'")
+            
+            # ----------------------------------------------------
+            # LÓGICA DE COMANDOS
+            # ----------------------------------------------------
+            if texto_limpio == '#hola':
+                respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
+                enviar_mensaje_whatsapp(destino, respuesta)
+
+            elif texto_limpio == '#anime':
+                respuesta = "🍿 ¡Sección Anime! Próximamente recomendaciones y listas actualizadas."
+                enviar_mensaje_whatsapp(destino, respuesta)
+
+            elif texto_limpio in ['#menu', '#ayuda']:
+                respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
+                enviar_mensaje_whatsapp(destino, respuesta)
+
+    except Exception as e:
+        print("⚠️ Error al procesar la estructura del mensaje:", e)
+
+    return jsonify({"status": "success"}), 200
             
             # Captura del contenido del mensaje
             texto_mensaje = ""
