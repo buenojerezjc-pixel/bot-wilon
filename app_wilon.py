@@ -54,23 +54,24 @@ def webhook():
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
-            # --- EXTRACCIÓN INFALIBLE DEL NÚMERO REAL ---
-            sender_field = data['data'].get('sender', '')
+            # --- EXTRACCIÓN DIRECTA DESDE LA RAÍZ ---
+            # 'sender' viene directo en data['sender']
+            sender_raiz = data.get('sender', '')
+            sender_data = data['data'].get('sender', '')
             remote_alt = key_obj.get('remoteJidAlt', '')
             remote_jid = key_obj.get('remoteJid', '')
             
-            # Buscamos cual de los 3 valores contiene un número telefónico real (sin @lid)
-            numero_candidato = ""
-            for item in [sender_field, remote_alt, remote_jid]:
-                if item and '@lid' not in item and '@s.whatsapp.net' in item:
-                    numero_candidato = item
+            # Buscar el número telefónico real (que tenga @s.whatsapp.net y no sea @lid)
+            numero_real = ""
+            for candidato in [sender_raiz, sender_data, remote_alt, remote_jid]:
+                if candidato and '@s.whatsapp.net' in candidato and '@lid' not in candidato:
+                    numero_real = candidato
                     break
             
-            if numero_candidato:
-                destino = numero_candidato.split('@')[0]
+            if numero_real:
+                destino = numero_real.split('@')[0]
             else:
-                # Si todo falla, extraemos el sender directo
-                destino = sender_field.split('@')[0] if sender_field else remote_jid.split('@')[0]
+                destino = remote_jid.split('@')[0]
             
             # Captura del contenido del mensaje
             texto_mensaje = ""
