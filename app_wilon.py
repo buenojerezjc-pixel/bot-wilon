@@ -11,25 +11,12 @@ INSTANCE_NAME = "wilon"
 API_KEY = "xaipslkt8clk75y0wlnpj"  # Coloca aquí tu Global API Key si la usas en la petición
 
 
-def enviar_mensaje_whatsapp(numero, texto):
-    """Función para enviar mensaje de respuesta a través de Evolution API"""
-    url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "apikey": API_KEY
-    }
-    
-    payload = {
-        "number": numero,
+payload = {
+    "number": numero,
+    "textMessage": {
         "text": texto
     }
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Respuesta enviada a WhatsApp ({response.status_code}):", response.text)
-    except Exception as e:
-        print("❌ Error al enviar mensaje por HTTP:", e)
+}
 
 
 @app.route('/webhook', methods=['POST'])
