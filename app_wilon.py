@@ -10,8 +10,8 @@ app = Flask(__name__)
 EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
 INSTANCE_NAME = "wilon"
 
-# Tu API Key completa extraída de la sesión activa
-API_KEY = "xaipslkt8clk75y6w1npj"
+# API Key Maestra de Evolution API
+API_KEY = "MiClaveSuperSecreta123"
 
 
 def enviar_mensaje_whatsapp(numero, texto):
@@ -47,14 +47,14 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # Evitar responder a los mensajes enviados por el propio bot
+            # Evitar bucles omitiendo mensajes propios
             from_me = key_obj.get('fromMe', False)
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
             remote_jid = key_obj.get('remoteJid', '')
             
-            # Obtener el texto del mensaje
+            # Captura del contenido del mensaje
             texto_mensaje = ""
             if 'conversation' in message_obj:
                 texto_mensaje = message_obj['conversation']
@@ -65,7 +65,7 @@ def webhook():
             print(f"💬 Mensaje de [{remote_jid}]: '{texto_limpio}'")
             
             # ----------------------------------------------------
-            # LÓGICA DE COMANDOS DEL BOT
+            # LÓGICA DE COMANDOS
             # ----------------------------------------------------
             if texto_limpio == '#hola':
                 respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
