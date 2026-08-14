@@ -8,7 +8,7 @@ app = Flask(__name__)
 # (Asegúrate de que la URL de la API y la API key coincidan con tus datos)
 EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
 INSTANCE_NAME = "wilon"
-API_KEY = "xaipslk..."  # Coloca aquí tu Global API Key si la usas en la petición
+API_KEY = "xaipslkt8clk75y0wlnpj"  # Coloca aquí tu Global API Key si la usas en la petición
 
 
 def enviar_mensaje_whatsapp(numero, texto):
