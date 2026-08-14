@@ -1,72 +1,96 @@
 import os
 import requests
-from openai import OpenAI
+from flask import Flask, request, jsonify
 
-# Configuración de Evolution API
-INSTANCE_NAME = "wilon_bot"
-API_URL = "https://evolution-api-wilon.onrender.com"
-API_KEY = "123456"
+app = Flask(__name__)
+
+# Configuración de tu API de Evolution
+# (Asegúrate de que la URL de la API y la API key coincidan con tus datos)
+EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
+INSTANCE_NAME = "wilon"
+API_KEY = "xaipslk..."  # Coloca aquí tu Global API Key si la usas en la petición
 
 
-def responder_whatsapp(numero, texto_mensaje):
-    """Envía respuesta de texto directa sin retardo (delay)."""
-    url = f"{API_URL}/message/sendText/{INSTANCE_NAME}"
+def enviar_mensaje_whatsapp(numero, texto):
+    """Función para enviar mensaje de respuesta a través de Evolution API"""
+    url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
+    
     headers = {
-        "apikey": API_KEY,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "apikey": API_KEY
     }
-
-    # Aseguramos enviar solo el número limpio (ej. 573108788739)
-    numero_limpio = numero.split("@")[0]
-
-    # Payload simplificado e inmediato:
+    
     payload = {
-        "number": numero_limpio,
-        "text": texto_mensaje,
-        "textMessage": {"text": texto_mensaje}
+        "number": numero,
+        "text": texto
     }
-
+    
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"Estado de envío: {response.status_code}")
-        print(f"Respuesta API: {response.text}")
-        return response.json()
+        print(f"📤 Respuesta enviada a WhatsApp ({response.status_code}):", response.text)
     except Exception as e:
-        print(f"❌ Error al enviar mensaje: {e}")
-        return None
+        print("❌ Error al enviar mensaje por HTTP:", e)
 
 
-def obtener_recomendacion_anime(prompt_usuario):
-    """Consulta a la API de OpenAI para obtener una recomendación de anime personalizada."""
-    api_key = os.getenv("OPENAI_API_KEY")
-
-    # Validamos que la API Key exista antes de llamar a OpenAI
-    if not api_key:
-        return "⚠️ Error: La API Key de OpenAI no está configurada en Render."
-
-    if not prompt_usuario.strip():
-        prompt_usuario = "Recomiéndame un anime popular muy bueno de cualquier género."
-
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Ruta que recibe las notificaciones de WhatsApp desde Evolution API"""
+    data = request.get_json()
+    
+    # Imprimir en la consola de Render para depuración
+    print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
+    
     try:
-        # Inicializamos el cliente dentro de la función para mayor estabilidad
-        client = OpenAI(api_key=api_key)
+        # Validar si el evento contiene un mensaje
+        if data and 'data' in data and 'message' in data['data']:
+            message_obj = data['data']['message']
+            key_obj = data['data']['key']
+            
+            # Verificar que el mensaje NO haya sido enviado por el propio bot (fromMe)
+            from_me = key_obj.get('fromMe', False)
+            if from_me:
+                return jsonify({"status": "ignored_from_me"}), 200
+            
+            # Extraer el número del remitente y el texto enviado
+            remote_jid = key_obj.get('remoteJid', '')
+            
+            # Formatos de texto posibles en WhatsApp
+            texto_mensaje = ""
+            if 'conversation' in message_obj:
+                texto_mensaje = message_obj['conversation']
+            elif 'extendedTextMessage' in message_obj and 'text' in message_obj['extendedTextMessage']:
+                texto_mensaje = message_obj['extendedTextMessage']['text']
+                
+            texto_limpio = texto_mensaje.strip().lower()
+            print(f"💬 Mensaje de [{remote_jid}]: '{texto_limpio}'")
+            
+            # ----------------------------------------------------
+            # 🤖 LÓGICA DE COMANDOS DEL BOT
+            # ----------------------------------------------------
+            if texto_limpio == '#hola':
+                respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
+                enviar_mensaje_whatsapp(remote_jid, respuesta)
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Eres un experto recomendador de anime entusiasta y conciso. "
-                        "Da recomendaciones breves, entretenidas, formateadas con emojis y negritas para WhatsApp. "
-                        "Incluye: Título, Género, Número de episodios y un resumen sin spoilers de máximo 2 oraciones."
-                    )
-                },
-                {"role": "user", "content": prompt_usuario}
-            ],
-            max_tokens=300
-        )
-        return response.choices[0].message.content
+            elif texto_limpio == '#anime':
+                respuesta = "🍿 ¡Sección Anime! Próximamente recomendaciones y listas actualizadas."
+                enviar_mensaje_whatsapp(remote_jid, respuesta)
+
+            elif texto_limpio == '#menu' or texto_limpio == '#ayuda':
+                respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
+                enviar_mensaje_whatsapp(remote_jid, respuesta)
+
     except Exception as e:
-        print(f"Error con OpenAI: {e}")
-        return f"❌ Ocurrió un error al generar la recomendación: {e}"
+        print("⚠️ Error al procesar la estructura del mensaje:", e)
+
+    return jsonify({"status": "success"}), 200
+
+
+@app.route('/', methods=['GET'])
+def index():
+    """Ruta de prueba de estado"""
+    return "Bot de Wilon funcionando correctamente", 200
+
+
+if __name__ == '__main__':
+    # Para ejecución local
+    app.run(host='0.0.0.0', port=5000)
