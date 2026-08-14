@@ -15,7 +15,7 @@ API_KEY = "MiClaveSuperSecreta123"
 
 
 def enviar_mensaje_whatsapp(numero, texto):
-    """Envía la respuesta a WhatsApp a través de Evolution API"""
+    """Envía la respuesta a WhatsApp a través de Evolution API v2"""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
     headers = {
@@ -23,9 +23,12 @@ def enviar_mensaje_whatsapp(numero, texto):
         "apikey": API_KEY
     }
     
+    # Payload exacto exigido por Evolution v2
     payload = {
         "number": numero,
-        "text": texto
+        "textMessage": {
+            "text": texto
+        }
     }
     
     try:
@@ -33,7 +36,6 @@ def enviar_mensaje_whatsapp(numero, texto):
         print(f"📤 Respuesta enviada a WhatsApp ({response.status_code}):", response.text)
     except Exception as e:
         print("❌ Error al enviar mensaje por HTTP:", e)
-
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
