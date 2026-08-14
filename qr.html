@@ -2,82 +2,135 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conectar Wilon a WhatsApp</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #111b21; color: white; margin: 0; }
-        .card { background: #202c33; padding: 30px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 320px; }
-        img { width: 250px; height: 250px; border-radius: 8px; margin: 15px auto; background: white; padding: 10px; display: none; }
-        button { background: #00a884; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }
-        button:hover { background: #008f6f; }
-        #status { margin-top: 15px; color: #aebac1; font-size: 14px; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background-color: #1e293b;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        h2 { margin-bottom: 1.5rem; color: #38bdf8; }
+        button {
+            background-color: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.3s;
+            width: 100%;
+        }
+        button:hover { background-color: #059669; }
+        button:disabled { background-color: #64748b; cursor: not-allowed; }
+        #qr-container {
+            margin-top: 1.5rem;
+            min-height: 250px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        img {
+            max-width: 250px;
+            border-radius: 8px;
+            border: 4px solid #38bdf8;
+        }
+        .status { margin-top: 10px; font-size: 0.9rem; color: #94a3b8; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>Vincular WhatsApp Wilon 📲</h2>
-        <button onclick="obtenerQR()">Generar Código QR</button>
-        <img id="qrImage" src="" alt="Código QR">
-        <p id="status">Haz clic en el botón para obtener el QR.</p>
+<div class="card">
+    <h2>Vinculación Wilon WhatsApp 📲</h2>
+    <button id="btn-qr" onclick="obtenerQR()">Generar Código QR</button>
+    <div id="qr-container">
+        <p class="status" id="status-text">Haz clic en el botón para solicitar el QR.</p>
     </div>
+</div>
 
-    <script>
-        async function obtenerQR() {
-            const status = document.getElementById("status");
-            const imgElement = document.getElementById("qrImage");
-            
-            status.innerText = "Cargando código QR...";
-            imgElement.style.display = "none";
+<script>
+    const API_URL = "https://evolution-wilon-api.onrender.com";
+    const API_KEY = "42964047a04943399d3ba7e63f92d83e";
+    const INSTANCE_NAME = "wilon";
 
-            const baseUrl = "https://evolution-wilon-api.onrender.com";
+    async function obtenerQR() {
+        const btn = document.getElementById("btn-qr");
+        const statusText = document.getElementById("status-text");
+        const qrContainer = document.getElementById("qr-container");
 
-            try {
-                // Intentamos conectar a la instancia
-                let res = await fetch(`${baseUrl}/instance/connect/wilon`, {
-                    method: "GET",
-                    headers: { "apikey": "wilon123" }
+        btn.disabled = true;
+        statusText.innerText = "Conectando con la API y generando QR...";
+
+        try {
+            // 1. Intentar conectar/obtener QR directamente
+            let response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
+                method: "GET",
+                headers: { "apikey": API_KEY }
+            });
+
+            let data = await response.json();
+
+            // 2. Si la instancia no existe, la creamos primero
+            if (response.status === 404 || (data.message && data.message.includes("not found"))) {
+                statusText.innerText = "Creando instancia por primera vez...";
+                await fetch(`${API_URL}/instance/create`, {
+                    method: "POST",
+                    headers: {
+                        "apikey": API_KEY,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        instanceName: INSTANCE_NAME,
+                        qrcode: true,
+                        integration: "WHATSAPP-BAILEYS"
+                    })
                 });
-                let data = await res.json();
 
-                // Si la instancia no existe, la creamos automáticamente
-                if (res.status === 404 || data.error || (data.response && data.response.message)) {
-                    status.innerText = "Creando instancia por primera vez...";
-                    await fetch(`${baseUrl}/instance/create`, {
-                        method: "POST",
-                        headers: { 
-                            "Content-Type": "application/json",
-                            "apikey": "wilon123" 
-                        },
-                        body: JSON.stringify({
-                            instanceName: "wilon",
-                            token: "wilon123",
-                            qrcode: true
-                        })
-                    });
-                    
-                    // Reintentamos conectar para obtener el QR
-                    res = await fetch(`${baseUrl}/instance/connect/wilon`, {
-                        method: "GET",
-                        headers: { "apikey": "wilon123" }
-                    });
-                    data = await res.json();
-                }
-
-                const base64Data = data.base64 || (data.qrcode && data.qrcode.base64);
-
-                if (base64Data) {
-                    imgElement.src = base64Data;
-                    imgElement.style.display = "block";
-                    status.innerText = "¡Listo! Escanéalo rápido con WhatsApp.";
-                } else if (data.instance && data.instance.state === "open") {
-                    status.innerText = "✅ ¡Wilon ya está conectado a WhatsApp!";
-                } else {
-                    status.innerText = "Generando... Presiona el botón de nuevo en 5 segundos.";
-                }
-            } catch (err) {
-                status.innerText = "Error al conectar con Render: " + err;
+                // Reintentar conexión tras crear
+                response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
+                    method: "GET",
+                    headers: { "apikey": API_KEY }
+                });
+                data = await response.json();
             }
+
+            // 3. Extraer la imagen base64 del QR
+            const qrBase64 = data.base64 || data.code || (data.qrcode ? data.qrcode.base64 : null);
+
+            if (qrBase64) {
+                const imageSrc = qrBase64.startsWith("data:image") ? qrBase64 : `data:image/png;base64,${qrBase64}`;
+                qrContainer.innerHTML = `<img src="${imageSrc}" alt="Código QR WhatsApp"><p class="status">¡Escanea este código desde WhatsApp!</p>`;
+            } else if (data.instance?.state === "open") {
+                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡El WhatsApp ya está VINCULADO y activo! 🎉</p>`;
+            } else {
+                statusText.innerText = "Iniciando servicio... Haz clic de nuevo en 3 segundos.";
+            }
+
+        } catch (error) {
+            console.error("Error:", error);
+            statusText.innerText = "Error de conexión con Evolution API. Reintenta en unos segundos.";
+        } finally {
+            btn.disabled = false;
         }
-    </script>
+    }
+</script>
+
 </body>
 </html>
