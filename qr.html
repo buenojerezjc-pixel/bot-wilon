@@ -5,11 +5,11 @@
     <title>Conectar Wilon a WhatsApp</title>
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #111b21; color: white; margin: 0; }
-        .card { background: #202c33; padding: 30px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-        img { width: 250px; height: 250px; border-radius: 8px; margin: 15px 0; background: white; padding: 10px; display: none; }
-        button { background: #00a884; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+        .card { background: #202c33; padding: 30px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5); width: 320px; }
+        img { width: 250px; height: 250px; border-radius: 8px; margin: 15px auto; background: white; padding: 10px; display: none; }
+        button { background: #00a884; color: white; border: none; padding: 12px 24px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer; width: 100%; }
         button:hover { background: #008f6f; }
-        #status { margin-top: 10px; color: #aebac1; }
+        #status { margin-top: 15px; color: #aebac1; font-size: 14px; }
     </style>
 </head>
 <body>
@@ -17,9 +17,8 @@
     <div class="card">
         <h2>Vincular WhatsApp Wilon 📲</h2>
         <button onclick="obtenerQR()">Generar Código QR</button>
-        <br>
         <img id="qrImage" src="" alt="Código QR">
-        <p id="status">Haz clic en el botón para obtener el QR fresquito.</p>
+        <p id="status">Haz clic en el botón para obtener el QR.</p>
     </div>
 
     <script>
@@ -27,26 +26,56 @@
             const status = document.getElementById("status");
             const imgElement = document.getElementById("qrImage");
             
-            status.innerText = "Cargando código QR desde Render...";
+            status.innerText = "Cargando código QR...";
             imgElement.style.display = "none";
 
+            const baseUrl = "https://evolution-wilon-api.onrender.com";
+
             try {
-                const res = await fetch("https://evolution-wilon-api.onrender.com/instance/connect/wilon");
-                const data = await res.json();
-                
+                // Intentamos conectar a la instancia
+                let res = await fetch(`${baseUrl}/instance/connect/wilon`, {
+                    method: "GET",
+                    headers: { "apikey": "wilon123" }
+                });
+                let data = await res.json();
+
+                // Si la instancia no existe, la creamos automáticamente
+                if (res.status === 404 || data.error || (data.response && data.response.message)) {
+                    status.innerText = "Creando instancia por primera vez...";
+                    await fetch(`${baseUrl}/instance/create`, {
+                        method: "POST",
+                        headers: { 
+                            "Content-Type": "application/json",
+                            "apikey": "wilon123" 
+                        },
+                        body: JSON.stringify({
+                            instanceName: "wilon",
+                            token: "wilon123",
+                            qrcode: true
+                        })
+                    });
+                    
+                    // Reintentamos conectar para obtener el QR
+                    res = await fetch(`${baseUrl}/instance/connect/wilon`, {
+                        method: "GET",
+                        headers: { "apikey": "wilon123" }
+                    });
+                    data = await res.json();
+                }
+
                 const base64Data = data.base64 || (data.qrcode && data.qrcode.base64);
 
                 if (base64Data) {
                     imgElement.src = base64Data;
                     imgElement.style.display = "block";
-                    status.innerText = "¡Escanéalo rápido desde WhatsApp -> Dispositivos vinculados!";
+                    status.innerText = "¡Listo! Escanéalo rápido con WhatsApp.";
                 } else if (data.instance && data.instance.state === "open") {
-                    status.innerText = "✅ ¡Ya estás completamente conectado a WhatsApp!";
+                    status.innerText = "✅ ¡Wilon ya está conectado a WhatsApp!";
                 } else {
-                    status.innerText = "No se pudo generar el QR. Revisa la consola.";
+                    status.innerText = "Generando... Presiona el botón de nuevo en 5 segundos.";
                 }
             } catch (err) {
-                status.innerText = "Error de conexión con Render: " + err;
+                status.innerText = "Error al conectar con Render: " + err;
             }
         }
     </script>
