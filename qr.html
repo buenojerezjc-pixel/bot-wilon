@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conectar Wilon a WhatsApp</title>
+    <!-- Librería para convertir texto a QR directamente en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -47,8 +49,9 @@
             align-items: center;
             flex-direction: column;
         }
-        img {
-            max-width: 250px;
+        #qrcode img, #qrcode canvas {
+            padding: 10px;
+            background: white;
             border-radius: 8px;
             border: 4px solid #38bdf8;
         }
@@ -61,6 +64,7 @@
     <h2>Vinculación Wilon WhatsApp 📲</h2>
     <button id="btn-qr" onclick="obtenerQR()">Generar Código QR</button>
     <div id="qr-container">
+        <div id="qrcode"></div>
         <p class="status" id="status-text">Haz clic en el botón para solicitar el QR.</p>
     </div>
 </div>
@@ -73,21 +77,22 @@
     async function obtenerQR() {
         const btn = document.getElementById("btn-qr");
         const statusText = document.getElementById("status-text");
-        const qrContainer = document.getElementById("qr-container");
+        const qrDiv = document.getElementById("qrcode");
 
         btn.disabled = true;
-        statusText.innerText = "Conectando con la API...";
+        qrDiv.innerHTML = "";
+        statusText.innerText = "Consultando Evolution API...";
 
         try {
-            // 1. Intentar conectar/obtener QR
+            // 1. Conectar a la instancia
             let response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                 method: "GET",
                 headers: { "apikey": API_KEY }
             });
 
-            // Si la instancia no existe, la creamos
+            // 2. Si no existe la instancia, la crea automáticamente
             if (response.status === 404) {
-                statusText.innerText = "Creando instancia...";
+                statusText.innerText = "Creando instancia por primera vez...";
                 await fetch(`${API_URL}/instance/create`, {
                     method: "POST",
                     headers: {
@@ -101,7 +106,6 @@
                     })
                 });
 
-                // Volver a pedir conexión
                 response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                     method: "GET",
                     headers: { "apikey": API_KEY }
@@ -109,36 +113,32 @@
             }
 
             let data = await response.json();
-            console.log("Respuesta Evolution API:", data);
+            console.log("Respuesta de API:", data);
 
-            // 2. Múltiples comprobaciones para capturar el QR según la respuesta de Evolution API v2
-            let qrBase64 = null;
+            // 3. Buscar el código de texto o imagen
+            let qrCodeText = data.code || data.pairingCode || data.base64 || (data.qrcode ? (data.qrcode.code || data.qrcode.base64) : null);
 
-            if (typeof data === "string" && data.startsWith("data:image")) {
-                qrBase64 = data;
-            } else if (data.base64) {
-                qrBase64 = data.base64;
-            } else if (data.code) {
-                qrBase64 = data.code;
-            } else if (data.qrcode && data.qrcode.base64) {
-                qrBase64 = data.qrcode.base64;
-            } else if (data.qrcode && typeof data.qrcode === "string") {
-                qrBase64 = data.qrcode;
-            }
-
-            // 3. Renderizar resultado
-            if (qrBase64) {
-                const imageSrc = qrBase64.startsWith("data:image") ? qrBase64 : `data:image/png;base64,${qrBase64}`;
-                qrContainer.innerHTML = `<img src="${imageSrc}" alt="Código QR WhatsApp"><p class="status">¡Escanea este código con WhatsApp!</p>`;
+            if (qrCodeText) {
+                if (qrCodeText.startsWith("data:image")) {
+                    qrDiv.innerHTML = `<img src="${qrCodeText}">`;
+                } else {
+                    // Convertimos el código de texto en un código QR en pantalla
+                    new QRCode(qrDiv, {
+                        text: qrCodeText,
+                        width: 230,
+                        height: 230
+                    });
+                }
+                statusText.innerText = "¡Escanea este código QR desde WhatsApp!";
             } else if (data.instance?.state === "open" || data.status === "open") {
-                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡El WhatsApp ya está VINCULADO y activo! 🎉</p>`;
+                statusText.innerText = "¡WhatsApp ya está VINCULADO y activo! 🎉";
             } else {
-                statusText.innerText = "Respuesta recibida pero sin imagen. Haz clic nuevamente en 3 segundos.";
+                statusText.innerText = "Cargando sesión... Haz clic en el botón una vez más.";
             }
 
         } catch (error) {
             console.error("Error:", error);
-            statusText.innerText = "Error al conectar con Evolution API.";
+            statusText.innerText = "Error de conexión con la API.";
         } finally {
             btn.disabled = false;
         }
