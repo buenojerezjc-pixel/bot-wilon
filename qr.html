@@ -66,6 +66,7 @@
 </div>
 
 <script>
+    // URL del servicio activo de Evolution API en Render
     const API_URL = "https://evolution-wilon-api.onrender.com";
     const API_KEY = "42964047a04943399d3ba7e63f92d83e";
     const INSTANCE_NAME = "wilon";
@@ -76,10 +77,10 @@
         const qrContainer = document.getElementById("qr-container");
 
         btn.disabled = true;
-        statusText.innerText = "Conectando con la API y generando QR...";
+        statusText.innerText = "Conectando con la API y buscando QR...";
 
         try {
-            // 1. Intentar conectar/obtener QR directamente
+            // 1. Intentar conectar y obtener el QR de la instancia 'wilon'
             let response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                 method: "GET",
                 headers: { "apikey": API_KEY }
@@ -103,7 +104,7 @@
                     })
                 });
 
-                // Reintentar conexión tras crear
+                // Volver a consultar conexión tras la creación
                 response = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
                     method: "GET",
                     headers: { "apikey": API_KEY }
@@ -111,21 +112,21 @@
                 data = await response.json();
             }
 
-            // 3. Extraer la imagen base64 del QR
+            // 3. Extraer e imprimir la imagen del QR
             const qrBase64 = data.base64 || data.code || (data.qrcode ? data.qrcode.base64 : null);
 
             if (qrBase64) {
                 const imageSrc = qrBase64.startsWith("data:image") ? qrBase64 : `data:image/png;base64,${qrBase64}`;
                 qrContainer.innerHTML = `<img src="${imageSrc}" alt="Código QR WhatsApp"><p class="status">¡Escanea este código desde WhatsApp!</p>`;
             } else if (data.instance?.state === "open") {
-                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡El WhatsApp ya está VINCULADO y activo! 🎉</p>`;
+                qrContainer.innerHTML = `<p class="status" style="color: #4ade80;">¡WhatsApp ya está VINCULADO y activo! 🎉</p>`;
             } else {
-                statusText.innerText = "Iniciando servicio... Haz clic de nuevo en 3 segundos.";
+                statusText.innerText = "Cargando código QR... Presiona el botón una vez más.";
             }
 
         } catch (error) {
             console.error("Error:", error);
-            statusText.innerText = "Error de conexión con Evolution API. Reintenta en unos segundos.";
+            statusText.innerText = "Error al conectar con Evolution API. Reintenta en unos segundos.";
         } finally {
             btn.disabled = false;
         }
