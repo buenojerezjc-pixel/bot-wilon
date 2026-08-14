@@ -10,7 +10,7 @@ app = Flask(__name__)
 EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
 INSTANCE_NAME = "wilon"
 
-# API Key Maestra de Evolution API
+# API Key Maestra
 API_KEY = "MiClaveSuperSecreta123"
 
 
@@ -23,7 +23,6 @@ def enviar_mensaje_whatsapp(numero, texto):
         "apikey": API_KEY
     }
     
-    # Payload exacto exigido por Evolution v2
     payload = {
         "number": numero,
         "textMessage": {
@@ -36,6 +35,7 @@ def enviar_mensaje_whatsapp(numero, texto):
         print(f"📤 Respuesta enviada a WhatsApp ({response.status_code}):", response.text)
     except Exception as e:
         print("❌ Error al enviar mensaje por HTTP:", e)
+
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -54,11 +54,10 @@ def webhook():
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
-            # 1. Intentamos obtener el número real desde sender o remoteJid
+            # Extraer número telefónico real (omitir ID @lid)
             sender_raw = data['data'].get('sender', '')
             remote_jid = key_obj.get('remoteJid', '')
             
-            # Si el remoteJid termina en @lid (ID de privacidad), usamos el sender real
             if '@lid' in remote_jid and sender_raw:
                 destino = sender_raw.split('@')[0]
             else:
@@ -88,36 +87,6 @@ def webhook():
             elif texto_limpio in ['#menu', '#ayuda']:
                 respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
                 enviar_mensaje_whatsapp(destino, respuesta)
-
-    except Exception as e:
-        print("⚠️ Error al procesar la estructura del mensaje:", e)
-
-    return jsonify({"status": "success"}), 200
-            
-            # Captura del contenido del mensaje
-            texto_mensaje = ""
-            if 'conversation' in message_obj:
-                texto_mensaje = message_obj['conversation']
-            elif 'extendedTextMessage' in message_obj and 'text' in message_obj['extendedTextMessage']:
-                texto_mensaje = message_obj['extendedTextMessage']['text']
-                
-            texto_limpio = texto_mensaje.strip().lower()
-            print(f"💬 Mensaje de [{remote_jid}]: '{texto_limpio}'")
-            
-            # ----------------------------------------------------
-            # LÓGICA DE COMANDOS
-            # ----------------------------------------------------
-            if texto_limpio == '#hola':
-                respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
-                enviar_mensaje_whatsapp(remote_jid, respuesta)
-
-            elif texto_limpio == '#anime':
-                respuesta = "🍿 ¡Sección Anime! Próximamente recomendaciones y listas actualizadas."
-                enviar_mensaje_whatsapp(remote_jid, respuesta)
-
-            elif texto_limpio in ['#menu', '#ayuda']:
-                respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
-                enviar_mensaje_whatsapp(remote_jid, respuesta)
 
     except Exception as e:
         print("⚠️ Error al procesar la estructura del mensaje:", e)
