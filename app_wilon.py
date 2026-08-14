@@ -14,8 +14,11 @@ INSTANCE_NAME = "wilon"
 API_KEY = "MiClaveSuperSecreta123"
 
 
-def enviar_mensaje_whatsapp(numero, texto):
-    """Envía la respuesta a WhatsApp a través de Evolution API v2"""
+def enviar_mensaje_whatsapp(destino, texto):
+    """
+    Envía la respuesta a WhatsApp al MISMO CHAT de origen
+    (Funciona transparente para números individuales o IDs de grupo @g.us)
+    """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
     headers = {
@@ -24,7 +27,7 @@ def enviar_mensaje_whatsapp(numero, texto):
     }
     
     payload = {
-        "number": numero,
+        "number": destino,
         "textMessage": {
             "text": texto
         }
@@ -32,14 +35,14 @@ def enviar_mensaje_whatsapp(numero, texto):
     
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Respuesta enviada a WhatsApp ({response.status_code}):", response.text)
+        print(f"📤 Respuesta enviada al chat [{destino}] (HTTP {response.status_code}):", response.text)
     except Exception as e:
-        print("❌ Error al enviar mensaje por HTTP:", e)
+        print("❌ Error de red al enviar mensaje por HTTP:", e)
 
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Ruta del webhook que procesa los mensajes de WhatsApp"""
+    """Ruta del webhook que procesa los eventos entrantes de WhatsApp"""
     data = request.get_json()
     
     print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
@@ -49,53 +52,61 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # Omitir mensajes propios
+            # 1. Ignorar mensajes enviados por el propio bot para evitar bucles
             from_me = key_obj.get('fromMe', False)
             if from_me:
                 return jsonify({"status": "ignored_from_me"}), 200
             
-            # --- EXTRACCIÓN DIRECTA DESDE LA RAÍZ ---
-            # 'sender' viene directo en data['sender']
-            sender_raiz = data.get('sender', '')
-            sender_data = data['data'].get('sender', '')
-            remote_alt = key_obj.get('remoteJidAlt', '')
             remote_jid = key_obj.get('remoteJid', '')
+            remote_alt = key_obj.get('remoteJidAlt', '')
             
-            # Buscar el número telefónico real (que tenga @s.whatsapp.net y no sea @lid)
-            numero_real = ""
-            for candidato in [sender_raiz, sender_data, remote_alt, remote_jid]:
-                if candidato and '@s.whatsapp.net' in candidato and '@lid' not in candidato:
-                    numero_real = candidato
-                    break
-            
-            if numero_real:
-                destino = numero_real.split('@')[0]
-            else:
+            # 2. DETERMINAR EL CHAT DESTINO EXACTO (Garantiza responder en el mismo chat)
+            if '@g.us' in remote_jid:
+                # Si viene de un grupo, el destino ES el ID del grupo (escucha sin menciones)
+                destino = remote_jid
+            elif '@s.whatsapp.net' in remote_alt:
+                # Chat privado con privacidad LID: responde a la persona que escribió
+                destino = remote_alt.split('@')[0]
+            elif '@s.whatsapp.net' in remote_jid:
+                # Chat privado estándar
                 destino = remote_jid.split('@')[0]
-            
-            # Captura del contenido del mensaje
+            else:
+                participant = key_obj.get('participant', '')
+                if '@s.whatsapp.net' in participant:
+                    destino = participant.split('@')[0]
+                else:
+                    destino = remote_jid.split('@')[0]
+
+            # 3. MANEJO FLEXIBLE DE MENSAJES (Texto simple, extendido, respuestas, etc.)
             texto_mensaje = ""
             if 'conversation' in message_obj:
                 texto_mensaje = message_obj['conversation']
-            elif 'extendedTextMessage' in message_obj and 'text' in message_obj['extendedTextMessage']:
-                texto_mensaje = message_obj['extendedTextMessage']['text']
-                
+            elif 'extendedTextMessage' in message_obj:
+                texto_mensaje = message_obj['extendedTextMessage'].get('text', '')
+            elif 'buttonsResponseMessage' in message_obj:
+                texto_mensaje = message_obj['buttonsResponseMessage'].get('selectedButtonId', '')
+            elif 'listResponseMessage' in message_obj:
+                texto_mensaje = message_obj['listResponseMessage'].get('singleSelectReply', {}).get('selectedRowId', '')
+
             texto_limpio = texto_mensaje.strip().lower()
-            print(f"💬 Mensaje enviado a destino: [{destino}] con texto: '{texto_limpio}'")
+            print(f"💬 Mensaje procesado del chat [{destino}]: '{texto_limpio}'")
             
-            # ----------------------------------------------------
-            # LÓGICA DE COMANDOS
-            # ----------------------------------------------------
-            if texto_limpio == '#hola':
-                respuesta = "¡Hola! 👋 Soy el bot de Wilon. ¿En qué te puedo ayudar hoy?"
+            # 4. LÓGICA DE COMANDOS
+            if texto_limpio in ['#activar', '#hola']:
+                respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
                 enviar_mensaje_whatsapp(destino, respuesta)
 
             elif texto_limpio == '#anime':
-                respuesta = "🍿 ¡Sección Anime! Próximamente recomendaciones y listas actualizadas."
+                respuesta = "🍿 *Sección Anime:*\nPróximamente catálogo de recomendaciones y novedades."
                 enviar_mensaje_whatsapp(destino, respuesta)
 
             elif texto_limpio in ['#menu', '#ayuda']:
-                respuesta = "📜 *Comandos Disponibles:*\n\n• `#hola` - Saludo inicial\n• `#anime` - Ver sección de anime\n• `#menu` - Ver esta lista de ayuda"
+                respuesta = (
+                    "📜 *Comandos Disponibles:*\n\n"
+                    "• `#activar` / `#hola` - Activa el bot en el chat\n"
+                    "• `#anime` - Sección Anime\n"
+                    "• `#menu` / `#ayuda` - Lista de comandos"
+                )
                 enviar_mensaje_whatsapp(destino, respuesta)
 
     except Exception as e:
