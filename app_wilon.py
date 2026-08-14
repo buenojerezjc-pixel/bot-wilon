@@ -52,17 +52,24 @@ def webhook():
             message_obj = data['data']['message']
             key_obj = data['data']['key']
             
-            # 1. Ignorar mensajes enviados por el propio bot para evitar bucles
-            from_me = key_obj.get('fromMe', False)
-            if from_me:
-                return jsonify({"status": "ignored_from_me"}), 200
-            
             remote_jid = key_obj.get('remoteJid', '')
             remote_alt = key_obj.get('remoteJidAlt', '')
+            from_me = key_obj.get('fromMe', False)
             
-            # 2. DETERMINAR EL CHAT DESTINO EXACTO (Garantiza responder en el mismo chat)
+            # ----------------------------------------------------
+            # REGLA DEL DUENO DEL QR (fromMe)
+            # ----------------------------------------------------
+            # Si el mensaje lo envía la misma línea del QR:
+            # - Permitir SOLO si está dentro de un grupo (@g.us)
+            # - Ignorar si es en chat privado
+            if from_me and '@g.us' not in remote_jid:
+                return jsonify({"status": "ignored_from_me_private"}), 200
+
+            # ----------------------------------------------------
+            # DETERMINAR EL CHAT DESTINO EXACTO
+            # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # Si viene de un grupo, el destino ES el ID del grupo (escucha sin menciones)
+                # Si viene de un grupo, el destino ES el ID del grupo
                 destino = remote_jid
             elif '@s.whatsapp.net' in remote_alt:
                 # Chat privado con privacidad LID: responde a la persona que escribió
@@ -77,7 +84,9 @@ def webhook():
                 else:
                     destino = remote_jid.split('@')[0]
 
-            # 3. MANEJO FLEXIBLE DE MENSAJES (Texto simple, extendido, respuestas, etc.)
+            # ----------------------------------------------------
+            # MANEJO FLEXIBLE DE MENSAJES
+            # ----------------------------------------------------
             texto_mensaje = ""
             if 'conversation' in message_obj:
                 texto_mensaje = message_obj['conversation']
@@ -91,7 +100,9 @@ def webhook():
             texto_limpio = texto_mensaje.strip().lower()
             print(f"💬 Mensaje procesado del chat [{destino}]: '{texto_limpio}'")
             
-            # 4. LÓGICA DE COMANDOS
+            # ----------------------------------------------------
+            # LÓGICA DE COMANDOS
+            # ----------------------------------------------------
             if texto_limpio in ['#activar', '#hola']:
                 respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
                 enviar_mensaje_whatsapp(destino, respuesta)
