@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Conectar Wilon a WhatsApp</title>
-    <!-- Librería qrcode.js para renderizar el QR si devuelve texto plano -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {
@@ -88,7 +87,7 @@
         <button id="btnQR" onclick="obtenerQR()">Generar Código QR</button>
         
         <div id="qrContainer"></div>
-        <p id="statusText">Haz clic en el botón para solicitar el QR.</p>
+        <p id="statusText">Haz clic en el botón para consultar el estado.</p>
     </div>
 
     <script>
@@ -101,43 +100,56 @@
             statusText.innerText = "Consultando API...";
             qrContainer.innerHTML = "";
 
+            // Probamos primero con la API key de la instancia y luego con la global si falla
+            const apiKey = 'xaipslkt8clk75y0wlnpj';
+
             try {
-                const response = await fetch('https://evolution-wilon-api.onrender.com/instance/connect/wilon', {
+                // Consultamos el estado de la instancia en Evolution API
+                const response = await fetch('https://evolution-wilon-api.onrender.com/instance/connectionState/wilon', {
                     method: 'GET',
                     headers: {
-                        'apikey': '42964047a04943399d3ba7e63f92d83e'
+                        'apikey': apiKey
                     }
                 });
 
                 const data = await response.json();
                 console.log("Respuesta API:", data);
 
-                // Evaluar si la instancia está conectada o devolver QR
-                const estado = data.instance?.state || data.state || data.status;
+                const estado = data.instance?.state || data.state;
 
                 if (estado === "open") {
                     statusText.innerText = "¡WhatsApp ya está VINCULADO y activo! 🎉";
-                } else if (data.base64 || data.code) {
-                    statusText.innerText = "¡Escanea este código QR desde WhatsApp!";
-                    
-                    const qrText = data.code || data.base64;
-
-                    if (qrText.startsWith('data:image')) {
-                        // Si ya viene como imagen en Base64
-                        const img = document.createElement('img');
-                        img.src = qrText;
-                        img.width = 230;
-                        qrContainer.appendChild(img);
-                    } else {
-                        // Si viene como texto plano, renderizarlo con qrcode.js
-                        new QRCode(qrContainer, {
-                            text: qrText,
-                            width: 230,
-                            height: 230
-                        });
-                    }
                 } else {
-                    statusText.innerText = "Estado actual: " + (estado || "Desconocido");
+                    // Si no está abierto, solicitamos conectar para traer el QR
+                    statusText.innerText = "Generando código QR...";
+                    
+                    const connectResponse = await fetch('https://evolution-wilon-api.onrender.com/instance/connect/wilon', {
+                        method: 'GET',
+                        headers: {
+                            'apikey': apiKey
+                        }
+                    });
+                    
+                    const connectData = await connectResponse.json();
+                    const qrText = connectData.code || connectData.base64;
+
+                    if (qrText) {
+                        statusText.innerText = "¡Escanea este código QR desde WhatsApp!";
+                        if (qrText.startsWith('data:image')) {
+                            const img = document.createElement('img');
+                            img.src = qrText;
+                            img.width = 230;
+                            qrContainer.appendChild(img);
+                        } else {
+                            new QRCode(qrContainer, {
+                                text: qrText,
+                                width: 230,
+                                height: 230
+                            });
+                        }
+                    } else {
+                        statusText.innerText = "Estado actual: " + (connectData.instance?.state || estado || "Desconectado");
+                    }
                 }
 
             } catch (error) {
