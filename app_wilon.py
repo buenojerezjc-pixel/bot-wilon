@@ -13,37 +13,35 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Configuración de Evolution API
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-wilon-api.onrender.com")
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-wilon-api.onrender.com").rstrip('/')
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "xaipslkt8olk75y0wlnpj")
 INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 
-# Variable global para activar/desactivar el bot
 bot_activo = True
 
 # ==========================================
-# FUNCIONES AUXILIARES DE ENVÍO
+# ENVÍO UNIVERSAL SIN RESTRICCIÓN DE DISPOSITIVO
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
-    """Envía un mensaje a un usuario individual o a un grupo."""
+    """
+    Envía mensaje sin importar si el usuario es LID, número real o grupo.
+    Resuelve el error 'SessionError: No sessions' estructurando la URL e instancia.
+    """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
-    # Si es un grupo (@g.us), enviamos el identificador completo del grupo
-    if "@g.us" in str(destinatario):
-        target = str(destinatario)
-    else:
-        # Si es un chat individual, limpiamos solo los números
-        target = re.sub(r'\D', '', str(destinatario).split('@')[0])
-    
+    # Limpieza básica del destinatario manteniendo @g.us, @s.whatsapp.net o @lid
+    target_jid = str(destinatario).strip()
+
     payload = {
-        "number": target,
+        "number": target_jid,
         "options": {
-            "delay": 1200,
-            "presence": "composing"
+            "delay": 0,
+            "presence": "composing",
+            "linkPreview": False
         },
         "textMessage": {
             "text": texto
@@ -51,31 +49,36 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     }
     
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = requests.post(url, json=payload, headers=headers, timeout=12)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a {target}")
+            logger.info(f"✅ Respuesta enviada con éxito a {target_jid}")
             return True
         else:
-            logger.error(f"❌ Error enviando mensaje a {target} ({response.status_code}): {response.text}")
+            logger.error(f"❌ Error al enviar a {target_jid} ({response.status_code}): {response.text}")
+            
+            # INTENTO DE RESPALDO (Fallback por si Evolution rechaza el JID completo en 'number')
+            number_only = re.sub(r'\D', '', target_jid.split('@')[0])
+            if number_only and target_jid != number_only:
+                payload["number"] = number_only
+                resp_retry = requests.post(url, json=payload, headers=headers, timeout=12)
+                if resp_retry.status_code in [200, 201]:
+                    logger.info(f"✅ Reintento exitoso a {number_only}")
+                    return True
             return False
+            
     except Exception as e:
-        logger.error(f"💥 Excepción al enviar mensaje a WhatsApp: {e}")
+        logger.error(f"💥 Excepción al enviar a WhatsApp: {e}")
         return False
 
 # ==========================================
-# COMANDOS DEL BOT (#)
+# LÓGICA DE ANIME
 # ==========================================
 def obtener_anime_recomendado():
-    """Consulta la API de AniList para obtener una recomendación de anime popular."""
     query = '''
     query {
-      Page(page: 1, perPage: 50) {
+      Page(page: 1, perPage: 40) {
         media(type: ANIME, sort: POPULARITY_DESC) {
-          title {
-            romaji
-            english
-          }
-          description
+          title { romaji english }
           episodes
           score: averageScore
           genres
@@ -88,146 +91,101 @@ def obtener_anime_recomendado():
         if response.status_code == 200:
             animes = response.json()['data']['Page']['media']
             anime = random.choice(animes)
-            
             titulo = anime['title']['english'] or anime['title']['romaji']
             generos = ", ".join(anime.get('genres', ['N/A']))
             score = anime.get('score', 'N/A')
             episodios = anime.get('episodes', 'N/A')
-            
-            descripcion = anime.get('description', 'Sin descripción disponible.')
-            if descripcion:
-                descripcion = re.sub('<[^<]+?>', '', descripcion)[:200] + "..."
 
             return (
                 f"⛩️ *Recomendación Anime: {titulo}*\n\n"
                 f"⭐ *Puntuación:* {score}/100\n"
                 f"📺 *Episodios:* {episodios}\n"
-                f"🏷️ *Géneros:* {generos}\n\n"
-                f"📝 *SINOPSIS:* {descripcion}"
+                f"🏷️ *Géneros:* {generos}"
             )
-    except Exception as e:
-        logger.error(f"Error obteniendo anime: {e}")
-    
-    return "⛩️ *Recomendación Anime:* ¡Te recomiendo ver *Dragon Ball*, *One Piece* o *Attack on Titan*! 🚀"
+    except Exception:
+        pass
+    return "⛩️ *Recomendación Anime:* Te sugiero ver *Dragon Ball*, *One Piece* o *Jujutsu Kaisen*."
 
+# ==========================================
+# PROCESAMIENTO DE COMANDOS (#)
+# ==========================================
 def procesar_comando(texto_mensaje, destinatario):
-    """Analiza el texto y ejecuta el comando correspondiente usando '#'."""
     global bot_activo
     texto_clean = texto_mensaje.strip()
     comando_lower = texto_clean.lower()
 
-    # COMANDOS DE CONTROL DE ESTADO
+    # Condición de activación / desactivación
     if comando_lower in ["#activar wilon", "#activar"]:
         bot_activo = True
-        enviar_mensaje_whatsapp(destinatario, "🟢 *Wilon activado.* A partir de ahora responderé a todos tus comandos.")
+        enviar_mensaje_whatsapp(destinatario, "🟢 *Wilon activado.*")
         return
 
-    elif comando_lower in ["#desactivar wilon", "#desactivar"]:
+    if comando_lower in ["#desactivar wilon", "#desactivar"]:
         bot_activo = False
-        enviar_mensaje_whatsapp(destinatario, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
+        enviar_mensaje_whatsapp(destinatario, "🔴 *Wilon desactivado.*")
         return
 
-    # Si el bot está desactivado, ignora
     if not bot_activo:
-        logger.info("⏸️ Bot desactivado: Comando ignorado.")
         return
 
-    # COMANDOS HABITUALES
+    # EVALUACIÓN DE COMANDOS (SOLO SI EMPIEZAN CON #)
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y listo.")
-        return
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y responde a cualquier dispositivo.")
 
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
-            "🤖 *MENÚ DE COMANDOS DE WILON* 🤖\n\n"
-            "▫️ *#ping* -> Verifica el estado del bot.\n"
-            "▫️ *#anime* -> Obtén una recomendación de anime al azar.\n"
-            "▫️ *#clima <ciudad>* -> Consulta el clima de una ciudad.\n"
-            "▫️ *#info* -> Información del sistema.\n"
-            "▫️ *#desactivar wilon* / *#desactivar* -> Pone el bot en reposo.\n"
-            "▫️ *#activar wilon* / *#activar* -> Reactiva el bot.\n"
-            "▫️ *#ayuda* -> Muestra este menú."
+            "🤖 *MENÚ DE WILON* 🤖\n\n"
+            "▫️ *#ping* -> Verifica conexión.\n"
+            "▫️ *#anime* -> Recomendación al azar.\n"
+            "▫️ *#info* -> Datos del bot.\n"
+            "▫️ *#desactivar* / *#activar* -> Control del bot."
         )
         enviar_mensaje_whatsapp(destinatario, menu)
-        return
 
     elif comando_lower == "#info":
-        info_txt = (
-            "⚡ *Wilon Bot System v1.0*\n"
-            "• Engine: Python 3 + Flask\n"
-            "• Integration: Evolution API v1.8.2\n"
-            "• Server: Render Cloud"
-        )
-        enviar_mensaje_whatsapp(destinatario, info_txt)
-        return
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Enrutamiento: Universal")
 
     elif comando_lower == "#anime":
-        respuesta_anime = obtener_anime_recomendado()
-        enviar_mensaje_whatsapp(destinatario, respuesta_anime)
-        return
+        enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
 
     elif comando_lower.startswith("#clima"):
         partes = texto_clean.split(" ", 1)
-        if len(partes) > 1:
-            ciudad = partes[1].strip()
-            enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 24°C con cielo parcialmente nublado.")
-        else:
-            enviar_mensaje_whatsapp(destinatario, "⚠️ Por favor especifica una ciudad. Ejemplo: `#clima Bogota`")
-        return
-
-    elif any(saludo in comando_lower for saludo in ["hola", "buenas", "wilon"]):
-        enviar_mensaje_whatsapp(destinatario, "👋 ¡Hola! Soy Wilon, tu asistente de WhatsApp. Escribe *#ayuda* para ver la lista de comandos disponibles.")
+        ciudad = partes[1].strip() if len(partes) > 1 else "tu ciudad"
+        enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 22°C.")
 
 # ==========================================
-# RUTAS DE LA APP (FLASK)
+# WEBHOOK DE FLASK
 # ==========================================
 @app.route('/', methods=['GET'])
 def home():
-    """Ruta raíz para verificar que el servicio está vivo (Healthcheck)."""
-    return jsonify({
-        "status": "online",
-        "bot": "Wilon Webhook",
-        "version": "1.0.0",
-        "bot_activo": bot_activo
-    }), 200
+    return jsonify({"status": "online", "bot": "Wilon Webhook"}), 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Endpoint que recibe las notificaciones de Evolution API de forma limpia."""
-    payload = request.get_json()
+    payload = request.get_json() or {}
     
-    if not payload:
-        return jsonify({"status": "ignored", "reason": "No JSON payload"}), 200
-
     try:
         event = payload.get("event")
-        data = payload.get("data")
+        data = payload.get("data", {})
         
-        # PROCESAR ÚNICAMENTE EVENTOS DE MENSAJES
         if event == "messages.upsert" and isinstance(data, dict):
             key = data.get("key", {})
-            
-            from_me = key.get("fromMe", False)
             remote_jid = key.get("remoteJid", "")
-
-            # Si el mensaje viene de un grupo (@g.us), la respuesta se envía al GRUPO
-            # Si es un chat individual, la respuesta va al número individual
-            destinatario = remote_jid
-
-            # Extraer texto del mensaje
+            
             message_body = data.get("message", {})
             texto = (
                 message_body.get("conversation") or
                 message_body.get("extendedTextMessage", {}).get("text") or
                 ""
-            )
+            ).strip()
 
-            if texto:
-                logger.info(f"📩 Mensaje recibido de {destinatario}: {texto}")
-                procesar_comando(texto, destinatario)
+            # REGLA PRINCIPAL: Responder a TODO si el mensaje empieza con '#'
+            if texto and texto.startswith('#') and remote_jid:
+                logger.info(f"📩 Procesando comando '{texto}' desde {remote_jid}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
-        logger.error(f"💥 Error procesando webhook: {e}")
+        logger.error(f"💥 Error en webhook: {e}")
 
     return jsonify({"status": "success"}), 200
 
