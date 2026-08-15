@@ -14,6 +14,33 @@ INSTANCE_NAME = "wilon"
 API_KEY = "MiClaveSuperSecreta123"
 
 
+def resolver_lid_a_numero(lid_jid):
+    """
+    Consulta el perfil en Evolution API para resolver un ID tipo @lid
+    y obtener el número de teléfono real (@s.whatsapp.net) del emisor.
+    """
+    url_profile = f"{EVOLUTION_API_URL}/chat/fetchProfile/{INSTANCE_NAME}"
+    headers = {
+        "Content-Type": "application/json",
+        "apikey": API_KEY
+    }
+    payload = {"number": lid_jid}
+    
+    try:
+        res = requests.post(url_profile, json=payload, headers=headers, timeout=5)
+        if res.status_code in [200, 201]:
+            res_data = res.json()
+            num_id = res_data.get('id', '') or res_data.get('number', '')
+            if '@s.whatsapp.net' in str(num_id):
+                return str(num_id).split('@')[0]
+            elif str(num_id).replace('+', '').isdigit():
+                return str(num_id).replace('+', '')
+    except Exception as e:
+        print("⚠️ Error al resolver LID vía fetchProfile:", e)
+
+    return None
+
+
 def enviar_mensaje_whatsapp(destino, texto):
     """
     Envía la respuesta a WhatsApp al destino correcto
@@ -64,21 +91,23 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO (SOLUCIÓN DEFINITIVA EMISOR REAL)
+            # DETERMINAR DESTINO EXACTO (SOLUCIÓN INFALIBLE PARA @lid)
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
                 # 1. Si es GRUPO: Respondemos al ID del grupo (@g.us)
                 destino = remote_jid
             else:
                 # 2. Si es CHAT PRIVADO:
-                # La API envía el número real del emisor en remoteJidAlt (@s.whatsapp.net)
                 if remote_alt and '@s.whatsapp.net' in remote_alt:
                     destino = remote_alt.split('@')[0]
                 elif remote_jid and '@s.whatsapp.net' in remote_jid:
                     destino = remote_jid.split('@')[0]
+                elif '@lid' in remote_jid:
+                    # Resolvemos la ID oculta consultando la cuenta real
+                    numero_resuelto = resolver_lid_a_numero(remote_jid)
+                    destino = numero_resuelto if numero_resuelto else remote_jid.split('@')[0]
                 else:
-                    # Si viene formato LID y no hay alt, enviamos directamente al LID
-                    destino = remote_jid
+                    destino = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
