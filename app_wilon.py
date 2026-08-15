@@ -20,14 +20,12 @@ INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 bot_activo = True
 
 # ==========================================
-# ENVÍO UNIVERSAL DE MENSAJES
+# ENVÍO UNIVERSAL SIN VALIDACIÓN DE NÚMERO
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     """
-    Envía mensaje a cualquier destinatario:
-    - Chat propio (dueño del QR)
-    - Grupos (@g.us)
-    - Usuarios externos (@s.whatsapp.net / LID)
+    Fuerza el envío del mensaje ignorando si el número existe/reconocido o no.
+    Aplica para: números no guardados, usuarios externos, LID y el dueño del QR.
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
@@ -42,7 +40,8 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         "options": {
             "delay": 0,
             "presence": "composing",
-            "linkPreview": False
+            "linkPreview": False,
+            "forceSend": True  # FORZAR ENVÍO SIN VALIDAR SI EL NÚMERO O ID EXISTE
         },
         "textMessage": {
             "text": texto
@@ -52,19 +51,17 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=12)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Respuesta enviada con éxito a {target_jid}")
+            logger.info(f"✅ Respuesta forzada enviada con éxito a {target_jid}")
             return True
         else:
             logger.error(f"❌ Error al enviar a {target_jid} ({response.status_code}): {response.text}")
             
-            # Reintento usando solo números (limpieza rápida si falla el formato JID completo)
-            number_only = re.sub(r'\D', '', target_jid.split('@')[0])
-            if number_only and target_jid != number_only:
-                payload["number"] = number_only
-                resp_retry = requests.post(url, json=payload, headers=headers, timeout=12)
-                if resp_retry.status_code in [200, 201]:
-                    logger.info(f"✅ Reintento exitoso a {number_only}")
-                    return True
+            # Reintento directo usando el identificador tal cual viene en el evento
+            payload["number"] = target_jid.split('@')[0]
+            resp_retry = requests.post(url, json=payload, headers=headers, timeout=12)
+            if resp_retry.status_code in [200, 201]:
+                logger.info(f"✅ Reintento forzado exitoso a {payload['number']}")
+                return True
             return False
             
     except Exception as e:
@@ -108,7 +105,7 @@ def obtener_anime_recomendado():
     return "⛩️ *Recomendación Anime:* Te sugiero ver *Dragon Ball*, *One Piece* o *Jujutsu Kaisen*."
 
 # ==========================================
-# LÓGICA DE COMANDOS (#)
+# PROCESAMIENTO DE COMANDOS (#)
 # ==========================================
 def procesar_comando(texto_mensaje, destinatario):
     global bot_activo
@@ -128,7 +125,7 @@ def procesar_comando(texto_mensaje, destinatario):
     if not bot_activo:
         return
 
-    # EVALUACIÓN DE COMANDOS (#)
+    # EVALUACIÓN ÚNICA SI EMPIEZA POR #
     if comando_lower == "#ping":
         enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y listo.")
 
@@ -143,7 +140,7 @@ def procesar_comando(texto_mensaje, destinatario):
         enviar_mensaje_whatsapp(destinatario, menu)
 
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Enrutamiento: Universal + Privado QR")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Modo: Envío Forzado Universal")
 
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
@@ -183,18 +180,13 @@ def webhook():
             # REGLA FUNDAMENTAL: Debe iniciar obligatoriamente con '#'
             if texto and texto.startswith('#'):
                 
-                # SI VIENE DEL DUEÑO DEL QR (fromMe = True)
-                if from_me:
-                    # Si es en un grupo, responde al grupo
-                    if "@g.us" in remote_jid:
-                        destinatario = remote_jid
-                    else:
-                        # Si es chat privado (tu propio número), usa el JID del receptor o remoteJid
-                        destinatario = data.get("userReceipt") or remote_jid
+                # Definir destinatario sin importar quién sea o si el número es reconocido
+                if from_me and "@g.us" not in remote_jid:
+                    destinatario = data.get("userReceipt") or remote_jid
                 else:
                     destinatario = remote_jid
 
-                logger.info(f"📩 Procesando comando '{texto}' enviado a destinatario: {destinatario}")
+                logger.info(f"📩 Comando recibido '{texto}' desde {destinatario}")
                 procesar_comando(texto, destinatario)
 
     except Exception as e:
