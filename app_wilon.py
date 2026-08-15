@@ -167,29 +167,29 @@ def home():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Endpoint que recibe las notificaciones de Evolution API."""
-    data = request.get_json()
+    """Endpoint que recibe las notificaciones de Evolution API de forma limpia."""
+    payload = request.get_json()
     
-    if not data:
+    if not payload:
         return jsonify({"status": "ignored", "reason": "No JSON payload"}), 200
 
     try:
-        event = data.get("event")
+        event = payload.get("event")
+        data = payload.get("data")
         
-        # Procesar solo eventos de mensajes entrantes
-        if event == "messages.upsert":
-            message_data = data.get("data", {})
-            key = message_data.get("key", {})
+        # PROCESAR ÚNICAMENTE EVENTOS DE MENSAJES (Ignora listas de contactos, chats, etc.)
+        if event == "messages.upsert" and isinstance(data, dict):
+            key = data.get("key", {})
             
             from_me = key.get("fromMe", False)
             remote_jid = key.get("remoteJid", "")
             
-            # FILTRO ANTI-BUCLE: Ignorar mensajes enviados por el propio bot o de grupos
+            # FILTRO ANTI-BUCLE: Ignorar mensajes propios o de grupos
             if from_me or "@g.us" in remote_jid:
                 return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
-            # Extraer el texto del mensaje
-            message_body = message_data.get("message", {})
+            # Extraer texto del mensaje
+            message_body = data.get("message", {})
             texto = (
                 message_body.get("conversation") or
                 message_body.get("extendedTextMessage", {}).get("text") or
