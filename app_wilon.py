@@ -25,15 +25,22 @@ bot_activo = True
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
 def enviar_mensaje_whatsapp(numero_destino, texto):
-    """Envía un mensaje de texto usando únicamente el número de teléfono limpio."""
+    """Envía un mensaje de texto filtrando previamente IDs LID no válidas."""
+    
+    # Extraer únicamente los dígitos
+    numero_limpio = re.sub(r'\D', '', str(numero_destino).split('@')[0])
+    
+    # Un número telefónico internacional real de WhatsApp suele tener entre 10 y 15 dígitos.
+    # Si tiene 15 dígitos y empieza por '1000' o '1018', es un ID interno LID y no un teléfono.
+    if len(numero_limpio) > 13 or "@lid" in str(numero_destino):
+        logger.warning(f"⚠️ Se omitió el envío a {numero_limpio} porque es un ID interno LID/Clonado no registrable por WhatsApp.")
+        return False
+
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
-    
-    # Extraer únicamente los dígitos para evitar enviar IDs de tipo @lid
-    numero_limpio = re.sub(r'\D', '', str(numero_destino).split('@')[0])
     
     payload = {
         "number": numero_limpio,
@@ -206,20 +213,9 @@ def webhook():
             from_me = key.get("fromMe", False)
             remote_jid = key.get("remoteJid", "")
 
-            # Extraer posibles origenes del número real
-            sender = data.get("sender", "")
-            participant = key.get("participant", "") or data.get("participant", "")
-            
-            # Buscar cuál de las propiedades tiene un número telefónico real (sin @lid)
-            destinatario_real = remote_jid
-            for candidato in [sender, participant, key.get("remoteJidAlt")]:
-                if candidato and "@s.whatsapp.net" in str(candidato):
-                    destinatario_real = candidato
-                    break
-
-            # FILTRO ANTI-BUCLE: Ignorar si es de grupos
-            if "@g.us" in str(destinatario_real):
-                return jsonify({"status": "ignored", "reason": "Group message"}), 200
+            # FILTRO ANTI-BUCLE: Ignorar si es de grupos o mensaje propio
+            if from_me or "@g.us" in str(remote_jid):
+                return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
             # Extraer texto del mensaje
             message_body = data.get("message", {})
@@ -230,8 +226,8 @@ def webhook():
             )
 
             if texto:
-                logger.info(f"📩 Mensaje recibido de {destinatario_real}: {texto}")
-                procesar_comando(texto, destinatario_real)
+                logger.info(f"📩 Mensaje recibido de {remote_jid}: {texto}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
         logger.error(f"💥 Error procesando webhook: {e}")
