@@ -16,8 +16,8 @@ API_KEY = "MiClaveSuperSecreta123"
 
 def enviar_mensaje_whatsapp(destino, texto):
     """
-    Envía la respuesta a WhatsApp al MISMO CHAT de origen
-    (Soporta grupos @g.us y números reales individuales)
+    Envía la respuesta exactamente al mismo ID de chat de donde proviene el mensaje
+    (Soporta grupos @g.us, hilos privados @s.whatsapp.net e hilos LID @lid)
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -53,9 +53,6 @@ def webhook():
             key_obj = data['data']['key']
             
             remote_jid = key_obj.get('remoteJid', '')
-            remote_alt = key_obj.get('remoteJidAlt', '')
-            sender_raiz = data.get('sender', '')
-            participant = key_obj.get('participant', '')
             from_me = key_obj.get('fromMe', False)
             
             # ----------------------------------------------------
@@ -66,24 +63,10 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR EL CHAT DESTINO EXACTO Y VÁLIDO
+            # DESTINO EXACTO (Garantiza responder en la MISMA ventana de chat)
             # ----------------------------------------------------
-            if '@g.us' in remote_jid:
-                # 1. Si es un GRUPO: Respondemos al ID del grupo (@g.us)
-                destino = remote_jid
-            else:
-                # 2. Si es CHAT PRIVADO: Buscamos cuál candidato tiene un número real (@s.whatsapp.net)
-                numero_candidato = ""
-                for candidato in [remote_alt, sender_raiz, participant, remote_jid]:
-                    if candidato and '@s.whatsapp.net' in candidato and '@lid' not in candidato:
-                        numero_candidato = candidato
-                        break
-                
-                if numero_candidato:
-                    destino = numero_candidato.split('@')[0]
-                else:
-                    # Respaldo en caso de que venga solo el número en sender_raiz
-                    destino = sender_raiz.split('@')[0] if sender_raiz else remote_jid.split('@')[0]
+            # Usamos remoteJid directamente para mantener la respuesta en la misma ventana del usuario
+            destino = remote_jid
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
