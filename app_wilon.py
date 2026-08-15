@@ -25,17 +25,18 @@ bot_activo = True
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
 def enviar_mensaje_whatsapp(remote_jid, texto):
-    """Envía un mensaje de texto a WhatsApp limpiando el ID."""
-    # Extraer únicamente los dígitos numéricos del remitente
-    numero_limpio = re.sub(r'\D', '', str(remote_jid).split('@')[0])
-    
+    """Envía un mensaje de texto a WhatsApp resolviendo JID estándar y LID."""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
+    
+    # Si el JID no trae @, se lo agregamos
+    jid_destino = remote_jid if "@" in str(remote_jid) else f"{remote_jid}@s.whatsapp.net"
+    
     payload = {
-        "number": numero_limpio if numero_limpio else remote_jid,
+        "number": jid_destino,
         "options": {
             "delay": 1200,
             "presence": "composing"
@@ -44,12 +45,22 @@ def enviar_mensaje_whatsapp(remote_jid, texto):
             "text": texto
         }
     }
+    
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
             logger.info(f"✅ Mensaje enviado exitosamente a {remote_jid}")
             return True
         else:
+            # Intento de respaldo: extraer solo números por si es un número de teléfono sin LID
+            numero_limpio = re.sub(r'\D', '', str(remote_jid).split('@')[0])
+            if numero_limpio and len(numero_limpio) < 14: # Los números normales tienen menos de 14 dígitos
+                payload["number"] = numero_limpio
+                res_retry = requests.post(url, json=payload, headers=headers, timeout=10)
+                if res_retry.status_code in [200, 201]:
+                    logger.info(f"✅ Mensaje enviado (fallback numero) a {numero_limpio}")
+                    return True
+
             logger.error(f"❌ Error enviando mensaje ({response.status_code}): {response.text}")
             return False
     except Exception as e:
@@ -202,16 +213,10 @@ def webhook():
             key = data.get("key", {})
             
             from_me = key.get("fromMe", False)
-            
-            # Buscar el JID o número alternativo si viene con formato @lid
             remote_jid = key.get("remoteJid", "")
-            remote_jid_alt = key.get("remoteJidAlt") or data.get("sender") or remote_jid
             
-            # Usar la dirección que tenga un número de teléfono real
-            target_jid = remote_jid_alt if "@s.whatsapp.net" in remote_jid_alt else remote_jid
-
             # FILTRO ANTI-BUCLE: Ignorar mensajes propios o de grupos
-            if from_me or "@g.us" in str(target_jid):
+            if from_me or "@g.us" in remote_jid:
                 return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
             # Extraer texto del mensaje
@@ -223,8 +228,8 @@ def webhook():
             )
 
             if texto:
-                logger.info(f"📩 Mensaje recibido de {target_jid}: {texto}")
-                procesar_comando(texto, target_jid)
+                logger.info(f"📩 Mensaje recibido de {remote_jid}: {texto}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
         logger.error(f"💥 Error procesando webhook: {e}")
