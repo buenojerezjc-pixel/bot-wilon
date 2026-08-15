@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 # CONFIGURACIÓN Y LOGS
 # ==========================================
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -25,9 +25,9 @@ bot_activo = True
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
 def enviar_mensaje_whatsapp(remote_jid, texto):
-    """Envía un mensaje de texto a WhatsApp limpiando el ID si es necesario."""
-    # Extraer solo los números si viene con formato raro
-    numero_limpio = re.sub(r'\D', '', remote_jid.split('@')[0])
+    """Envía un mensaje de texto a WhatsApp limpiando el ID."""
+    # Extraer únicamente los dígitos numéricos del remitente
+    numero_limpio = re.sub(r'\D', '', str(remote_jid).split('@')[0])
     
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
@@ -88,7 +88,6 @@ def obtener_anime_recomendado():
             score = anime.get('score', 'N/A')
             episodios = anime.get('episodes', 'N/A')
             
-            # Limpiar etiquetas HTML de la descripción
             descripcion = anime.get('description', 'Sin descripción disponible.')
             if descripcion:
                 descripcion = re.sub('<[^<]+?>', '', descripcion)[:200] + "..."
@@ -122,7 +121,7 @@ def procesar_comando(texto_mensaje, remote_jid):
         enviar_mensaje_whatsapp(remote_jid, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
         return
 
-    # Si el bot está desactivado, ignora el resto
+    # Si el bot está desactivado, ignora
     if not bot_activo:
         logger.info("⏸️ Bot desactivado: Comando ignorado.")
         return
@@ -203,12 +202,17 @@ def webhook():
             key = data.get("key", {})
             
             from_me = key.get("fromMe", False)
-            # Priorizar el remitente real si viene dentro de data
-            remote_jid = data.get("sender") or key.get("remoteJid", "")
             
-            # FILTRO ANTI-BUCLE Y LIDs: Ignorar mensajes propios, grupos o cuentas de canal
-            if from_me or "@g.us" in remote_jid or "@lid" in remote_jid:
-                return jsonify({"status": "ignored", "reason": "Self, group or lid message"}), 200
+            # Buscar el JID o número alternativo si viene con formato @lid
+            remote_jid = key.get("remoteJid", "")
+            remote_jid_alt = key.get("remoteJidAlt") or data.get("sender") or remote_jid
+            
+            # Usar la dirección que tenga un número de teléfono real
+            target_jid = remote_jid_alt if "@s.whatsapp.net" in remote_jid_alt else remote_jid
+
+            # FILTRO ANTI-BUCLE: Ignorar mensajes propios o de grupos
+            if from_me or "@g.us" in str(target_jid):
+                return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
             # Extraer texto del mensaje
             message_body = data.get("message", {})
@@ -219,8 +223,8 @@ def webhook():
             )
 
             if texto:
-                logger.info(f"📩 Mensaje recibido de {remote_jid}: {texto}")
-                procesar_comando(texto, remote_jid)
+                logger.info(f"📩 Mensaje recibido de {target_jid}: {texto}")
+                procesar_comando(texto, target_jid)
 
     except Exception as e:
         logger.error(f"💥 Error procesando webhook: {e}")
