@@ -20,12 +20,14 @@ INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 bot_activo = True
 
 # ==========================================
-# ENVÍO UNIVERSAL SIN RESTRICCIÓN DE DISPOSITIVO
+# ENVÍO UNIVERSAL DE MENSAJES
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     """
-    Envía mensaje sin importar si el usuario es LID, número real o grupo.
-    Resuelve el error 'SessionError: No sessions' estructurando la URL e instancia.
+    Envía mensaje a cualquier destinatario:
+    - Chat propio (dueño del QR)
+    - Grupos (@g.us)
+    - Usuarios externos (@s.whatsapp.net / LID)
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
@@ -33,7 +35,6 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         "Content-Type": "application/json"
     }
     
-    # Limpieza básica del destinatario manteniendo @g.us, @s.whatsapp.net o @lid
     target_jid = str(destinatario).strip()
 
     payload = {
@@ -56,7 +57,7 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         else:
             logger.error(f"❌ Error al enviar a {target_jid} ({response.status_code}): {response.text}")
             
-            # INTENTO DE RESPALDO (Fallback por si Evolution rechaza el JID completo en 'number')
+            # Reintento usando solo números (limpieza rápida si falla el formato JID completo)
             number_only = re.sub(r'\D', '', target_jid.split('@')[0])
             if number_only and target_jid != number_only:
                 payload["number"] = number_only
@@ -107,14 +108,13 @@ def obtener_anime_recomendado():
     return "⛩️ *Recomendación Anime:* Te sugiero ver *Dragon Ball*, *One Piece* o *Jujutsu Kaisen*."
 
 # ==========================================
-# PROCESAMIENTO DE COMANDOS (#)
+# LÓGICA DE COMANDOS (#)
 # ==========================================
 def procesar_comando(texto_mensaje, destinatario):
     global bot_activo
     texto_clean = texto_mensaje.strip()
     comando_lower = texto_clean.lower()
 
-    # Condición de activación / desactivación
     if comando_lower in ["#activar wilon", "#activar"]:
         bot_activo = True
         enviar_mensaje_whatsapp(destinatario, "🟢 *Wilon activado.*")
@@ -128,22 +128,22 @@ def procesar_comando(texto_mensaje, destinatario):
     if not bot_activo:
         return
 
-    # EVALUACIÓN DE COMANDOS (SOLO SI EMPIEZAN CON #)
+    # EVALUACIÓN DE COMANDOS (#)
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y responde a cualquier dispositivo.")
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y listo.")
 
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
             "🤖 *MENÚ DE WILON* 🤖\n\n"
             "▫️ *#ping* -> Verifica conexión.\n"
             "▫️ *#anime* -> Recomendación al azar.\n"
-            "▫️ *#info* -> Datos del bot.\n"
+            "▫️ *#info* -> Datos del sistema.\n"
             "▫️ *#desactivar* / *#activar* -> Control del bot."
         )
         enviar_mensaje_whatsapp(destinatario, menu)
 
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Enrutamiento: Universal")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Enrutamiento: Universal + Privado QR")
 
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
@@ -154,7 +154,7 @@ def procesar_comando(texto_mensaje, destinatario):
         enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 22°C.")
 
 # ==========================================
-# WEBHOOK DE FLASK
+# RUTAS DE FLASK (WEBHOOK)
 # ==========================================
 @app.route('/', methods=['GET'])
 def home():
@@ -171,6 +171,7 @@ def webhook():
         if event == "messages.upsert" and isinstance(data, dict):
             key = data.get("key", {})
             remote_jid = key.get("remoteJid", "")
+            from_me = key.get("fromMe", False)
             
             message_body = data.get("message", {})
             texto = (
@@ -179,10 +180,22 @@ def webhook():
                 ""
             ).strip()
 
-            # REGLA PRINCIPAL: Responder a TODO si el mensaje empieza con '#'
-            if texto and texto.startswith('#') and remote_jid:
-                logger.info(f"📩 Procesando comando '{texto}' desde {remote_jid}")
-                procesar_comando(texto, remote_jid)
+            # REGLA FUNDAMENTAL: Debe iniciar obligatoriamente con '#'
+            if texto and texto.startswith('#'):
+                
+                # SI VIENE DEL DUEÑO DEL QR (fromMe = True)
+                if from_me:
+                    # Si es en un grupo, responde al grupo
+                    if "@g.us" in remote_jid:
+                        destinatario = remote_jid
+                    else:
+                        # Si es chat privado (tu propio número), usa el JID del receptor o remoteJid
+                        destinatario = data.get("userReceipt") or remote_jid
+                else:
+                    destinatario = remote_jid
+
+                logger.info(f"📩 Procesando comando '{texto}' enviado a destinatario: {destinatario}")
+                procesar_comando(texto, destinatario)
 
     except Exception as e:
         logger.error(f"💥 Error en webhook: {e}")
