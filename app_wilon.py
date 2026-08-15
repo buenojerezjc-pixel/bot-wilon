@@ -66,7 +66,7 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO (SOLUCIÓN DEFINITIVA)
+            # DETERMINAR DESTINO EXACTO
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
                 # 1. Si es GRUPO: Respondemos al ID del grupo (@g.us)
@@ -98,8 +98,12 @@ def webhook():
             # ----------------------------------------------------
             # LÓGICA DE COMANDOS
             # ----------------------------------------------------
-            if texto_limpio in ['#activar', '#hola']:
+            if texto_limpio in ['#activar wilon', '#hola']:
                 respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
+                enviar_mensaje_whatsapp(destino, respuesta)
+
+            elif texto_limpio == '#desactivar wilon':
+                respuesta = "😴 *Wilon Bot Desactivado:*\nHe pasado al modo suspensión. Para reactivarme escribe `#activar wilon`."
                 enviar_mensaje_whatsapp(destino, respuesta)
 
             elif texto_limpio == '#anime':
@@ -109,7 +113,8 @@ def webhook():
             elif texto_limpio in ['#menu', '#ayuda']:
                 respuesta = (
                     "📜 *Comandos Disponibles:*\n\n"
-                    "• `#activar` / `#hola` - Activa el bot en el chat\n"
+                    "• `#activar wilon` / `#hola` - Activa el bot\n"
+                    "• `#desactivar wilon` - Desactiva el bot\n"
                     "• `#anime` - Sección Anime\n"
                     "• `#menu` / `#ayuda` - Lista de comandos"
                 )
