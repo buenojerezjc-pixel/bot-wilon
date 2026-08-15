@@ -24,26 +24,21 @@ bot_activo = True
 # ==========================================
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
-def enviar_mensaje_whatsapp(numero_destino, texto):
-    """Envía un mensaje de texto filtrando previamente IDs LID no válidas."""
-    
-    # Extraer únicamente los dígitos
-    numero_limpio = re.sub(r'\D', '', str(numero_destino).split('@')[0])
-    
-    # Un número telefónico internacional real de WhatsApp suele tener entre 10 y 15 dígitos.
-    # Si tiene 15 dígitos y empieza por '1000' o '1018', es un ID interno LID y no un teléfono.
-    if len(numero_limpio) > 13 or "@lid" in str(numero_destino):
-        logger.warning(f"⚠️ Se omitió el envío a {numero_limpio} porque es un ID interno LID/Clonado no registrable por WhatsApp.")
-        return False
-
+def enviar_mensaje_whatsapp(remote_jid, texto):
+    """Envía un mensaje usando el remoteJid directo o limpiando según el tipo de ID."""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
+    # Extraer sólo números si es un WhatsApp normal, o mantener la estructura si es LID
+    destinatario = str(remote_jid)
+    if "@s.whatsapp.net" in destinatario:
+        destinatario = re.sub(r'\D', '', destinatario.split('@')[0])
+    
     payload = {
-        "number": numero_limpio,
+        "number": destinatario,
         "options": {
             "delay": 1200,
             "presence": "composing"
@@ -56,10 +51,10 @@ def enviar_mensaje_whatsapp(numero_destino, texto):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a {numero_limpio}")
+            logger.info(f"✅ Mensaje enviado exitosamente a {destinatario}")
             return True
         else:
-            logger.error(f"❌ Error enviando mensaje a {numero_limpio} ({response.status_code}): {response.text}")
+            logger.error(f"❌ Error enviando mensaje a {destinatario} ({response.status_code}): {response.text}")
             return False
     except Exception as e:
         logger.error(f"💥 Excepción al enviar mensaje a WhatsApp: {e}")
@@ -113,7 +108,7 @@ def obtener_anime_recomendado():
     
     return "⛩️ *Recomendación Anime:* ¡Te recomiendo ver *Dragon Ball*, *One Piece* o *Attack on Titan*! 🚀"
 
-def procesar_comando(texto_mensaje, destinatario):
+def procesar_comando(texto_mensaje, remote_jid):
     """Analiza el texto y ejecuta el comando correspondiente usando '#'."""
     global bot_activo
     texto_clean = texto_mensaje.strip()
@@ -122,12 +117,12 @@ def procesar_comando(texto_mensaje, destinatario):
     # COMANDOS DE CONTROL DE ESTADO
     if comando_lower in ["#activar wilon", "#activar"]:
         bot_activo = True
-        enviar_mensaje_whatsapp(destinatario, "🟢 *Wilon activado.* A partir de ahora responderé a todos tus comandos.")
+        enviar_mensaje_whatsapp(remote_jid, "🟢 *Wilon activado.* A partir de ahora responderé a todos tus comandos.")
         return
 
     elif comando_lower in ["#desactivar wilon", "#desactivar"]:
         bot_activo = False
-        enviar_mensaje_whatsapp(destinatario, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
+        enviar_mensaje_whatsapp(remote_jid, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
         return
 
     # Si el bot está desactivado, ignora
@@ -137,7 +132,7 @@ def procesar_comando(texto_mensaje, destinatario):
 
     # COMANDOS HABITUALES
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y listo.")
+        enviar_mensaje_whatsapp(remote_jid, "🏓 ¡Pong! El bot Wilon está activo y listo.")
         return
 
     elif comando_lower in ["#ayuda", "#help"]:
@@ -151,7 +146,7 @@ def procesar_comando(texto_mensaje, destinatario):
             "▫️ *#activar wilon* / *#activar* -> Reactiva el bot.\n"
             "▫️ *#ayuda* -> Muestra este menú."
         )
-        enviar_mensaje_whatsapp(destinatario, menu)
+        enviar_mensaje_whatsapp(remote_jid, menu)
         return
 
     elif comando_lower == "#info":
@@ -161,25 +156,25 @@ def procesar_comando(texto_mensaje, destinatario):
             "• Integration: Evolution API v1.8.2\n"
             "• Server: Render Cloud"
         )
-        enviar_mensaje_whatsapp(destinatario, info_txt)
+        enviar_mensaje_whatsapp(remote_jid, info_txt)
         return
 
     elif comando_lower == "#anime":
         respuesta_anime = obtener_anime_recomendado()
-        enviar_mensaje_whatsapp(destinatario, respuesta_anime)
+        enviar_mensaje_whatsapp(remote_jid, respuesta_anime)
         return
 
     elif comando_lower.startswith("#clima"):
         partes = texto_clean.split(" ", 1)
         if len(partes) > 1:
             ciudad = partes[1].strip()
-            enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 24°C con cielo parcialmente nublado.")
+            enviar_mensaje_whatsapp(remote_jid, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 24°C con cielo parcialmente nublado.")
         else:
-            enviar_mensaje_whatsapp(destinatario, "⚠️ Por favor especifica una ciudad. Ejemplo: `#clima Bogota`")
+            enviar_mensaje_whatsapp(remote_jid, "⚠️ Por favor especifica una ciudad. Ejemplo: `#clima Bogota`")
         return
 
     elif any(saludo in comando_lower for saludo in ["hola", "buenas", "wilon"]):
-        enviar_mensaje_whatsapp(destinatario, "👋 ¡Hola! Soy Wilon, tu asistente de WhatsApp. Escribe *#ayuda* para ver la lista de comandos disponibles.")
+        enviar_mensaje_whatsapp(remote_jid, "👋 ¡Hola! Soy Wilon, tu asistente de WhatsApp. Escribe *#ayuda* para ver la lista de comandos disponibles.")
 
 # ==========================================
 # RUTAS DE LA APP (FLASK)
