@@ -18,7 +18,7 @@ API_KEY = "MiClaveSuperSecreta123"
 def enviar_mensaje_whatsapp(destino, texto):
     """
     Envía la respuesta a WhatsApp.
-    - Si es grupo: usa el remoteJid del grupo (@g.us).
+    - Si es grupo: usa el ID del grupo (@g.us).
     - Si es privado: usa el número telefónico real (ej: 573108788739).
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
@@ -28,11 +28,10 @@ def enviar_mensaje_whatsapp(destino, texto):
         "apikey": API_KEY
     }
     
-    # Extraer únicamente dígitos numéricos si es privado, o mantener la ID si es grupo @g.us
     if '@g.us' in destino:
         numero_destino = destino
     else:
-        # Extraer solo la tira de números
+        # Extraer estrictamente los dígitos numéricos si es un chat privado
         numero_destino = re.sub(r'\D', '', destino.split('@')[0])
 
     payload = {
@@ -64,6 +63,9 @@ def webhook():
     print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
     
     try:
+        # Extraer sender de la raíz del JSON o de la sub-clave 'data'
+        sender_root = data.get('sender', '')
+        
         if 'data' in data:
             data_inner = data['data']
             key_obj = data_inner.get('key', {})
@@ -71,13 +73,16 @@ def webhook():
             
             remote_jid = key_obj.get('remoteJid', '')
             remote_alt = key_obj.get('remoteJidAlt', '')
-            sender = data_inner.get('sender', '')
+            sender_inner = data_inner.get('sender', '')
             from_me = key_obj.get('fromMe', False)
+            
+            # Buscar el sender real en cualquier parte del JSON
+            sender_real = sender_root or sender_inner or remote_alt
             
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
             # ----------------------------------------------------
-            # En chats PRIVADOS: Ignorar auto-respuestas para la cuenta propia.
+            # En PRIVADOS: Ignorar si el mensaje fue enviado por el dueño del QR
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
@@ -85,17 +90,18 @@ def webhook():
             # DETERMINAR DESTINO REAL DE RESPUESTA
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # 1. GRUPOS: Responde directo al grupo (sin pedir @bot)
+                # 1. GRUPOS: Responde directo al grupo (sin requerir @bot)
                 destino = remote_jid
             else:
-                # 2. PRIVADOS CON LID: Priorizar extraction de número real
-                if sender and '@s.whatsapp.net' in sender:
-                    destino = sender
-                elif remote_alt and '@s.whatsapp.net' in remote_alt:
-                    destino = remote_alt
+                # 2. PRIVADOS / PRIVACIDAD LID:
+                #    Priorizar el número telefónico numérico real extraído de sender_real
+                if sender_real and '@s.whatsapp.net' in sender_real:
+                    destino = sender_real
+                elif '@s.whatsapp.net' in remote_jid:
+                    destino = remote_jid
                 else:
-                    # Intento de rescate si sender viene sin sufijo @s.whatsapp.net
-                    destino = sender if sender else remote_jid
+                    # Si no viene @s.whatsapp.net pero sender_real tiene contenido, usarlo
+                    destino = sender_real if sender_real else remote_jid
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
