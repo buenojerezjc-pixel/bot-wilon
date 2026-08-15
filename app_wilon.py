@@ -9,7 +9,7 @@ from flask import Flask, request, jsonify
 # CONFIGURACIÓN Y LOGS
 # ==========================================
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
+logger = logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -25,14 +25,17 @@ bot_activo = True
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
 def enviar_mensaje_whatsapp(remote_jid, texto):
-    """Envía un mensaje de texto a WhatsApp mediante Evolution API."""
+    """Envía un mensaje de texto a WhatsApp limpiando el ID si es necesario."""
+    # Extraer solo los números si viene con formato raro
+    numero_limpio = re.sub(r'\D', '', remote_jid.split('@')[0])
+    
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     payload = {
-        "number": remote_jid,
+        "number": numero_limpio if numero_limpio else remote_jid,
         "options": {
             "delay": 1200,
             "presence": "composing"
@@ -108,7 +111,7 @@ def procesar_comando(texto_mensaje, remote_jid):
     texto_clean = texto_mensaje.strip()
     comando_lower = texto_clean.lower()
 
-    # COMANDOS DE CONTROL DE ESTADO (Funcionan siempre)
+    # COMANDOS DE CONTROL DE ESTADO
     if comando_lower in ["#activar wilon", "#activar"]:
         bot_activo = True
         enviar_mensaje_whatsapp(remote_jid, "🟢 *Wilon activado.* A partir de ahora responderé a todos tus comandos.")
@@ -119,7 +122,7 @@ def procesar_comando(texto_mensaje, remote_jid):
         enviar_mensaje_whatsapp(remote_jid, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
         return
 
-    # Si el bot está desactivado, ignora el resto de los comandos
+    # Si el bot está desactivado, ignora el resto
     if not bot_activo:
         logger.info("⏸️ Bot desactivado: Comando ignorado.")
         return
@@ -200,11 +203,12 @@ def webhook():
             key = data.get("key", {})
             
             from_me = key.get("fromMe", False)
-            remote_jid = key.get("remoteJid", "")
+            # Priorizar el remitente real si viene dentro de data
+            remote_jid = data.get("sender") or key.get("remoteJid", "")
             
-            # FILTRO ANTI-BUCLE: Ignorar mensajes propios o de grupos
-            if from_me or "@g.us" in remote_jid:
-                return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
+            # FILTRO ANTI-BUCLE Y LIDs: Ignorar mensajes propios, grupos o cuentas de canal
+            if from_me or "@g.us" in remote_jid or "@lid" in remote_jid:
+                return jsonify({"status": "ignored", "reason": "Self, group or lid message"}), 200
 
             # Extraer texto del mensaje
             message_body = data.get("message", {})
