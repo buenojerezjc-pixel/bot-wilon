@@ -14,13 +14,10 @@ INSTANCE_NAME = "wilon"
 API_KEY = "MiClaveSuperSecreta123"
 
 
-def enviar_mensaje_whatsapp(destino, texto):
+def enviar_mensaje_whatsapp(destino_jid, texto):
     """
-    Envía la respuesta a WhatsApp al destino correcto.
-    Admite:
-    - ID de Grupos (@g.us)
-    - Números directos (57310...)
-    - Identificadores de privacidad LID (@lid)
+    Envía la respuesta a WhatsApp manejando tanto grupos (@g.us),
+    números reales (@s.whatsapp.net) y chats privados con privacidad LID (@lid).
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -29,16 +26,27 @@ def enviar_mensaje_whatsapp(destino, texto):
         "apikey": API_KEY
     }
     
+    # Extraer únicamente el número o ID limpio para el campo 'number'
+    numero_limpio = destino_jid.split('@')[0] if '@' in destino_jid else destino_jid
+
     payload = {
-        "number": destino,
+        "number": numero_limpio,
         "textMessage": {
             "text": texto
+        },
+        "options": {
+            "presence": "composing",
+            "linkPreview": False
         }
     }
     
+    # Si el destino es un chat con LID o Grupo, enviamos el remoteJid dentro de options
+    if '@lid' in destino_jid or '@g.us' in destino_jid:
+        payload["options"]["remoteJid"] = destino_jid
+
     try:
         response = requests.post(url, json=payload, headers=headers)
-        print(f"📤 Respuesta enviada a [{destino}] (HTTP {response.status_code}):", response.text)
+        print(f"📤 Respuesta enviada a [{destino_jid}] (HTTP {response.status_code}):", response.text)
     except Exception as e:
         print("❌ Error de red al enviar mensaje por HTTP:", e)
 
@@ -62,7 +70,6 @@ def webhook():
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
             # ----------------------------------------------------
-            # Si el mensaje lo envía la misma línea del QR, solo responde dentro de grupos
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
@@ -70,13 +77,10 @@ def webhook():
             # DETERMINAR DESTINO EXACTO DE RESPUESTA
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # 1. Grupo
                 destino = remote_jid
             elif remote_alt and '@s.whatsapp.net' in remote_alt:
-                # 2. Si viene el número real alternativo
                 destino = remote_alt
             else:
-                # 3. Chat privado estándar o privacidad LID (enviamos el JID completo sin modificar)
                 destino = remote_jid
 
             # ----------------------------------------------------
