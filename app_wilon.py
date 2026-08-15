@@ -53,10 +53,8 @@ def webhook():
             key_obj = data['data']['key']
             
             remote_jid = key_obj.get('remoteJid', '')
+            remote_alt = key_obj.get('remoteJidAlt', '')
             from_me = key_obj.get('fromMe', False)
-            
-            # sender en la raíz del webhook SIEMPRE tiene la ID/número de quien escribió el mensaje
-            sender_raiz = data.get('sender', '')
             
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
@@ -66,18 +64,21 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO
+            # DETERMINAR DESTINO EXACTO (SOLUCIÓN DEFINITIVA EMISOR REAL)
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
                 # 1. Si es GRUPO: Respondemos al ID del grupo (@g.us)
                 destino = remote_jid
             else:
-                # 2. Si es CHAT PRIVADO: Extraemos el número real del emisor desde sender_raiz
-                if sender_raiz and '@' in sender_raiz:
-                    destino = sender_raiz.split('@')[0]
-                else:
-                    # En caso de emergencia o respaldo
+                # 2. Si es CHAT PRIVADO:
+                # La API envía el número real del emisor en remoteJidAlt (@s.whatsapp.net)
+                if remote_alt and '@s.whatsapp.net' in remote_alt:
+                    destino = remote_alt.split('@')[0]
+                elif remote_jid and '@s.whatsapp.net' in remote_jid:
                     destino = remote_jid.split('@')[0]
+                else:
+                    # Si viene formato LID y no hay alt, enviamos directamente al LID
+                    destino = remote_jid
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
