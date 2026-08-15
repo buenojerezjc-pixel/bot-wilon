@@ -17,7 +17,7 @@ API_KEY = "MiClaveSuperSecreta123"
 def enviar_mensaje_whatsapp(destino, texto):
     """
     Envía la respuesta a WhatsApp al destino correcto
-    (Grupos @g.us o el número real del remitente)
+    (Soporta IDs de Grupos @g.us o números reales @s.whatsapp.net)
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -53,9 +53,10 @@ def webhook():
             key_obj = data['data']['key']
             
             remote_jid = key_obj.get('remoteJid', '')
-            remote_alt = key_obj.get('remoteJidAlt', '')
-            participant = key_obj.get('participant', '')
             from_me = key_obj.get('fromMe', False)
+            
+            # sender en la raíz del webhook SIEMPRE tiene la ID/número de quien escribió el mensaje
+            sender_raiz = data.get('sender', '')
             
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
@@ -65,24 +66,17 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO REAL (ENVÍA AL REMITENTE 312, NO AL 310)
+            # DETERMINAR DESTINO EXACTO (SOLUCIÓN DEFINITIVA)
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # 1. Si es un GRUPO: Respondemos al ID del grupo (@g.us)
+                # 1. Si es GRUPO: Respondemos al ID del grupo (@g.us)
                 destino = remote_jid
             else:
-                # 2. Si es CHAT PRIVADO: Buscamos el número REAL de quien escribió
-                # Priorizamos remote_alt o participant que contienen al emisor (ej. 312)
-                numero_emisor = ""
-                for candidato in [remote_alt, participant, remote_jid]:
-                    if candidato and '@s.whatsapp.net' in candidato and '@lid' not in candidato:
-                        numero_emisor = candidato
-                        break
-                
-                if numero_emisor:
-                    destino = numero_emisor.split('@')[0]
+                # 2. Si es CHAT PRIVADO: Extraemos el número real del emisor desde sender_raiz
+                if sender_raiz and '@' in sender_raiz:
+                    destino = sender_raiz.split('@')[0]
                 else:
-                    # Si remote_jid venía limpio sin @lid, usamos remote_jid
+                    # En caso de emergencia o respaldo
                     destino = remote_jid.split('@')[0]
 
             # ----------------------------------------------------
@@ -99,7 +93,7 @@ def webhook():
                 texto_mensaje = message_obj['listResponseMessage'].get('singleSelectReply', {}).get('selectedRowId', '')
 
             texto_limpio = texto_mensaje.strip().lower()
-            print(f"💬 Mensaje de [{destino}]: '{texto_limpio}'")
+            print(f"💬 Mensaje procesado de [{destino}]: '{texto_limpio}'")
             
             # ----------------------------------------------------
             # LÓGICA DE COMANDOS
