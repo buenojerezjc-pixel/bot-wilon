@@ -16,8 +16,7 @@ API_KEY = "MiClaveSuperSecreta123"
 
 def enviar_mensaje_whatsapp(destino, texto):
     """
-    Envía la respuesta a WhatsApp al destino correcto.
-    Maneja Grupos (@g.us), Números normales y Chats Privados LID (@lid).
+    Envía la respuesta a WhatsApp al número o ID de grupo especificado.
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -26,15 +25,24 @@ def enviar_mensaje_whatsapp(destino, texto):
         "apikey": API_KEY
     }
     
-    # Para la Evolution API, si el destino contiene @lid o @g.us, 
-    # enviamos la dirección completa para que no le auto-concatene @s.whatsapp.net
+    # Extraer el número limpio sin sufijos ni arrobas
+    numero_destino = destino.split('@')[0] if '@' in destino else destino
+
     payload = {
-        "number": destino,
+        "number": numero_destino,
         "textMessage": {
             "text": texto
+        },
+        "options": {
+            "presence": "composing",
+            "linkPreview": False
         }
     }
     
+    # Si es un grupo, forzamos el remoteJid para garantizar entrega en el chat grupal
+    if '@g.us' in destino:
+        payload["options"]["remoteJid"] = destino
+
     try:
         response = requests.post(url, json=payload, headers=headers)
         print(f"📤 Respuesta enviada a [{destino}] (HTTP {response.status_code}):", response.text)
@@ -50,33 +58,38 @@ def webhook():
     print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
     
     try:
-        if data and 'data' in data and 'message' in data['data']:
-            message_obj = data['data']['message']
-            key_obj = data['data']['key']
+        if data and 'data' in data:
+            data_obj = data['data']
+            message_obj = data_obj.get('message', {})
+            key_obj = data_obj.get('key', {})
             
             remote_jid = key_obj.get('remoteJid', '')
             remote_alt = key_obj.get('remoteJidAlt', '')
+            sender = data_obj.get('sender', '')
             from_me = key_obj.get('fromMe', False)
             
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
             # ----------------------------------------------------
-            # Ignora auto-respuestas en chat privado propio, pero permite usarlo en grupos
+            # En chats PRIVADOS: Si es enviado por el propio dueño del QR, ignorar.
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO
+            # DETERMINAR DESTINO REAL DE RESPUESTA
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
-                # 1. GRUPO: Respondemos al grupo directamente (Sin necesidad de @bot)
+                # 1. GRUPOS: Responde al grupo directamente (Sin requerir @bot)
                 destino = remote_jid
-            elif remote_alt and '@s.whatsapp.net' in remote_alt:
-                # 2. CHAT PRIVADO: Si tenemos el número real en remoteJidAlt
-                destino = remote_alt
             else:
-                # 3. CHAT PRIVADO CON PRIVACIDAD LID: Enviamos la ID LID completa (@lid)
-                destino = remote_jid
+                # 2. CHATS PRIVADOS / PRIVACIDAD LID:
+                #    Buscamos el número telefónico real en sender o remoteJidAlt
+                if sender and '@s.whatsapp.net' in sender:
+                    destino = sender
+                elif remote_alt and '@s.whatsapp.net' in remote_alt:
+                    destino = remote_alt
+                else:
+                    destino = remote_jid  # Respaldo por defecto
 
             # ----------------------------------------------------
             # MANEJO FLEXIBLE DE MENSAJES
@@ -95,7 +108,7 @@ def webhook():
             print(f"💬 Mensaje procesado de [{destino}]: '{texto_limpio}'")
             
             # ----------------------------------------------------
-            # LÓGICA DE COMANDOS
+            # LÓGICA DE COMANDOS (PÚBLICO Y PRIVADO)
             # ----------------------------------------------------
             if texto_limpio in ['#activar wilon', '#hola']:
                 respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
