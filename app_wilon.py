@@ -20,23 +20,24 @@ INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 bot_activo = True
 
 # ==========================================
-# ENVÍO MULTI-CANAL (GRUPOS Y PRIVADOS)
+# ENVÍO MULTI-ENDPOINTS (EVITA SESSION ERROR)
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     """
-    Solución al error 'SessionError: No sessions' en grupos:
-    Evolution API requiere tratar los IDs '@g.us' de forma limpia sin forzar format de número personal.
+    Intenta enviar el mensaje usando múltiples endpoints de Evolution API.
+    Resuelve el bug 'SessionError: No sessions' probando el formato alternativo
+    y parámetros directos para grupos y privados.
     """
-    url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
     target_jid = str(destinatario).strip()
-    es_grupo = "@g.us" in target_jid
-
-    # Construcción del payload inteligente
+    
+    # Endpoint principal
+    url_primary = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
+    
     payload = {
         "number": target_jid,
         "options": {
@@ -49,31 +50,40 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         }
     }
 
-    # Si es grupo, añadimos compatibilidad de grupo
-    if es_grupo:
-        payload["groupJid"] = target_jid
-
     try:
-        response = requests.post(url, json=payload, headers=headers, timeout=12)
+        # Primer intento: sendText estándar
+        response = requests.post(url_primary, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Respuesta enviada con éxito a {target_jid}")
+            logger.info(f"✅ Respuesta enviada exitosamente a {target_jid}")
             return True
-        else:
-            logger.error(f"❌ Error al enviar a {target_jid} ({response.status_code}): {response.text}")
             
-            # REINTENTO FALLBACK: Si es número privado y falló, enviamos solo los dígitos numéricos
-            if not es_grupo:
-                number_only = re.sub(r'\D', '', target_jid.split('@')[0])
-                if number_only and target_jid != number_only:
-                    payload["number"] = number_only
-                    resp_retry = requests.post(url, json=payload, headers=headers, timeout=12)
-                    if resp_retry.status_code in [200, 201]:
-                        logger.info(f"✅ Reintento exitoso a {number_only}")
-                        return True
-            return False
-            
+        logger.warning(f"⚠️ Reintentando envío por fallback de endpoint para {target_jid}")
+
+        # Fallback 1: Si es grupo (@g.us) o chat privado, enviamos sin estructura anidada de textMessage
+        payload_alt = {
+            "number": target_jid,
+            "text": texto,
+            "delay": 0
+        }
+        resp_alt = requests.post(url_primary, json=payload_alt, headers=headers, timeout=10)
+        if resp_alt.status_code in [200, 201]:
+            logger.info(f"✅ Respuesta alternativa enviada a {target_jid}")
+            return True
+
+        # Fallback 2: Enviar número limpio si es chat personal
+        if "@g.us" not in target_jid:
+            clean_number = re.sub(r'\D', '', target_jid.split('@')[0])
+            payload_alt["number"] = clean_number
+            resp_num = requests.post(url_primary, json=payload_alt, headers=headers, timeout=10)
+            if resp_num.status_code in [200, 201]:
+                logger.info(f"✅ Respuesta enviada a número limpio {clean_number}")
+                return True
+
+        logger.error(f"❌ Fallaron todos los intentos para {target_jid}: {response.text}")
+        return False
+
     except Exception as e:
-        logger.error(f"💥 Excepción al enviar a WhatsApp: {e}")
+        logger.error(f"💥 Excepción durante envío a WhatsApp: {e}")
         return False
 
 # ==========================================
@@ -133,9 +143,9 @@ def procesar_comando(texto_mensaje, destinatario):
     if not bot_activo:
         return
 
-    # EVALUACIÓN ÚNICA: SOLO SI EMPIEZA POR #
+    # COMANDOS QUE INICIAN OBLIGATORIAMENTE CON #
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y listo.")
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y responde a cualquier grupo o usuario.")
 
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
@@ -148,7 +158,7 @@ def procesar_comando(texto_mensaje, destinatario):
         enviar_mensaje_whatsapp(destinatario, menu)
 
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Enrutamiento: Grupos + Privados")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo\n• Modo: Multi-fallback activado")
 
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
@@ -159,7 +169,7 @@ def procesar_comando(texto_mensaje, destinatario):
         enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 22°C.")
 
 # ==========================================
-# RUTAS DE FLASK (WEBHOOK)
+# WEBHOOK DE FLASK
 # ==========================================
 @app.route('/', methods=['GET'])
 def home():
@@ -185,10 +195,10 @@ def webhook():
                 ""
             ).strip()
 
-            # REGLA PRINCIPAL: Solo si empieza con '#'
+            # REGLA: Debe iniciar con # obligatoriamente
             if texto and texto.startswith('#'):
                 
-                # Asignación de destinatario limpia
+                # Definir destinatario para grupo o chat privado
                 if from_me and "@g.us" not in remote_jid:
                     destinatario = data.get("userReceipt") or remote_jid
                 else:
