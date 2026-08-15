@@ -16,27 +16,42 @@ API_KEY = "MiClaveSuperSecreta123"
 
 def resolver_lid_a_numero(lid_jid):
     """
-    Consulta el perfil en Evolution API para resolver un ID tipo @lid
-    y obtener el número de teléfono real (@s.whatsapp.net) del emisor.
+    Consulta en Evolution API el numero telefónico real asociado a un ID tipo @lid
     """
-    url_profile = f"{EVOLUTION_API_URL}/chat/fetchProfile/{INSTANCE_NAME}"
+    # 1. Intentar por busqueda de contactos
+    url_contact = f"{EVOLUTION_API_URL}/chat/findContacts/{INSTANCE_NAME}"
     headers = {
         "Content-Type": "application/json",
         "apikey": API_KEY
     }
-    payload = {"number": lid_jid}
+    payload = {"where": {"id": lid_jid}}
     
     try:
-        res = requests.post(url_profile, json=payload, headers=headers, timeout=5)
+        res = requests.post(url_contact, json=payload, headers=headers, timeout=5)
+        if res.status_code in [200, 201]:
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                # Extraer id real si existe
+                contact = data[0]
+                real_id = contact.get('id', '') or contact.get('number', '')
+                if '@s.whatsapp.net' in str(real_id):
+                    return str(real_id).split('@')[0]
+    except Exception as e:
+        print("⚠️ Error al buscar contacto por LID:", e)
+
+    # 2. Respaldo por fetchProfile
+    url_profile = f"{EVOLUTION_API_URL}/chat/fetchProfile/{INSTANCE_NAME}"
+    try:
+        res = requests.post(url_profile, json={"number": lid_jid}, headers=headers, timeout=5)
         if res.status_code in [200, 201]:
             res_data = res.json()
-            num_id = res_data.get('id', '') or res_data.get('number', '')
+            num_id = res_data.get('number', '') or res_data.get('id', '')
             if '@s.whatsapp.net' in str(num_id):
                 return str(num_id).split('@')[0]
             elif str(num_id).replace('+', '').isdigit():
                 return str(num_id).replace('+', '')
     except Exception as e:
-        print("⚠️ Error al resolver LID vía fetchProfile:", e)
+        print("⚠️ Error en fetchProfile respaldado:", e)
 
     return None
 
@@ -91,7 +106,7 @@ def webhook():
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO (SOLUCIÓN INFALIBLE PARA @lid)
+            # DETERMINAR DESTINO EXACTO (TRADUCCIÓN DE LID)
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
                 # 1. Si es GRUPO: Respondemos al ID del grupo (@g.us)
@@ -103,9 +118,13 @@ def webhook():
                 elif remote_jid and '@s.whatsapp.net' in remote_jid:
                     destino = remote_jid.split('@')[0]
                 elif '@lid' in remote_jid:
-                    # Resolvemos la ID oculta consultando la cuenta real
+                    # Resolvemos la ID oculta usando la API
                     numero_resuelto = resolver_lid_a_numero(remote_jid)
-                    destino = numero_resuelto if numero_resuelto else remote_jid.split('@')[0]
+                    if numero_resuelto:
+                        destino = numero_resuelto
+                    else:
+                        print(f"⚠️ No se pudo resolver el LID [{remote_jid}], omitiendo envío directo para evitar Error 400.")
+                        return jsonify({"status": "error_lid_unresolved"}), 200
                 else:
                     destino = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
 
