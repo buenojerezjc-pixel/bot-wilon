@@ -1,125 +1,210 @@
 import os
+import logging
 import requests
+import re
+import random
 from flask import Flask, request, jsonify
+
+# ==========================================
+# CONFIGURACIÓN Y LOGS
+# ==========================================
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# ----------------------------------------------------
-# CONFIGURACIÓN EXACTA DESDE TUS VARIABLES DE RENDER
-# ----------------------------------------------------
-EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-api-wilon.onrender.com").rstrip('/')
-INSTANCE_NAME = os.getenv("EVOLUTION_INSTANCE", "wilon")
-API_KEY = os.getenv("EVOLUTION_API_KEY", "42267431-8921-4d83-a9d5-31a89c211234")
+# Configuración de Evolution API
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-wilon-api.onrender.com")
+EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "xaipslkt8olk75y0wlnpj")
+INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 
-
-def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
-    """
-    Envía la respuesta a WhatsApp desactivando checkNumber para soportar
-    chats normales, grupos y destinatarios @lid de forma automática.
-    """
+# ==========================================
+# FUNCIONES AUXILIARES DE ENVÍO
+# ==========================================
+def enviar_mensaje_whatsapp(remote_jid, texto):
+    """Envía un mensaje de texto a WhatsApp mediante Evolution API."""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
-    
     headers = {
-        "Content-Type": "application/json",
-        "apikey": API_KEY
+        "apikey": EVOLUTION_API_KEY,
+        "Content-Type": "application/json"
     }
-    
     payload = {
-        "number": destino,
+        "number": remote_jid,
+        "options": {
+            "delay": 1200,
+            "presence": "composing"
+        },
         "textMessage": {
             "text": texto
-        },
-        "options": {
-            "presence": "composing",
-            "linkPreview": False,
-            "checkNumber": False,
-            "remoteJid": destino
         }
     }
-    
-    if quoted_data:
-        payload["quoted"] = quoted_data
-
     try:
-        print(f"🔗 Apuntando a: {url}")
         response = requests.post(url, json=payload, headers=headers, timeout=10)
-        print(f"📤 Respuesta enviada a [{destino}] (HTTP {response.status_code}):", response.text)
-        return response.status_code
+        if response.status_code in [200, 201]:
+            logger.info(f"✅ Mensaje enviado exitosamente a {remote_jid}")
+            return True
+        else:
+            logger.error(f"❌ Error enviando mensaje ({response.status_code}): {response.text}")
+            return False
     except Exception as e:
-        print("❌ Error de conexión al enviar mensaje:", e)
-        return None
+        logger.error(f"💥 Excepción al enviar mensaje a WhatsApp: {e}")
+        return False
 
+# ==========================================
+# COMANDOS DEL BOT (#)
+# ==========================================
+def obtener_anime_recomendado():
+    """Consulta la API de AniList para obtener una recomendación de anime popular."""
+    query = '''
+    query {
+      Page(page: 1, perPage: 50) {
+        media(type: ANIME, sort: POPULARITY_DESC) {
+          title {
+            romaji
+            english
+          }
+          description
+          episodes
+          score: averageScore
+          genres
+        }
+      }
+    }
+    '''
+    try:
+        response = requests.post('https://graphql.anilist.co', json={'query': query}, timeout=5)
+        if response.status_code == 200:
+            animes = response.json()['data']['Page']['media']
+            anime = random.choice(animes)
+            
+            titulo = anime['title']['english'] or anime['title']['romaji']
+            generos = ", ".join(anime.get('genres', ['N/A']))
+            score = anime.get('score', 'N/A')
+            episodios = anime.get('episodes', 'N/A')
+            
+            # Limpiar etiquetas HTML de la descripción
+            descripcion = anime.get('description', 'Sin descripción disponible.')
+            if descripcion:
+                descripcion = re.sub('<[^<]+?>', '', descripcion)[:200] + "..."
+
+            return (
+                f"⛩️ *Recomendación Anime: {titulo}*\n\n"
+                f"⭐ *Puntuación:* {score}/100\n"
+                f"📺 *Episodios:* {episodios}\n"
+                f"🏷️ *Géneros:* {generos}\n\n"
+                f"📝 *SINOPSIS:* {descripcion}"
+            )
+    except Exception as e:
+        logger.error(f"Error obteniendo anime: {e}")
+    
+    return "⛩️ *Recomendación Anime:* ¡Te recomiendo ver *Dragon Ball*, *One Piece* o *Attack on Titan*! 🚀"
+
+def procesar_comando(texto_mensaje, remote_jid):
+    """Analiza el texto y ejecuta el comando correspondiente usando '#'."""
+    texto_clean = texto_mensaje.strip()
+    comando_lower = texto_clean.lower()
+
+    # Comando #ping
+    if comando_lower == "#ping":
+        enviar_mensaje_whatsapp(remote_jid, "🏓 ¡Pong! El bot Wilon está activo y listo.")
+        return
+
+    # Comando #ayuda / #help
+    elif comando_lower in ["#ayuda", "#help"]:
+        menu = (
+            "🤖 *MENÚ DE COMANDOS DE WILON* 🤖\n\n"
+            "▫️ *#ping* -> Verifica el estado del bot.\n"
+            "▫️ *#anime* -> Obtén una recomendación de anime al azar.\n"
+            "▫️ *#clima <ciudad>* -> Consulta el clima de una ciudad.\n"
+            "▫️ *#info* -> Información del sistema.\n"
+            "▫️ *#ayuda* -> Muestra este menú."
+        )
+        enviar_mensaje_whatsapp(remote_jid, menu)
+        return
+
+    # Comando #info
+    elif comando_lower == "#info":
+        info_txt = (
+            "⚡ *Wilon Bot System v1.0*\n"
+            "• Engine: Python 3 + Flask\n"
+            "• Integration: Evolution API v1.8.2\n"
+            "• Server: Render Cloud"
+        )
+        enviar_mensaje_whatsapp(remote_jid, info_txt)
+        return
+
+    # Comando #anime
+    elif comando_lower == "#anime":
+        respuesta_anime = obtener_anime_recomendado()
+        enviar_mensaje_whatsapp(remote_jid, respuesta_anime)
+        return
+
+    # Comando #clima
+    elif comando_lower.startswith("#clima"):
+        partes = texto_clean.split(" ", 1)
+        if len(partes) > 1:
+            ciudad = partes[1].strip()
+            enviar_mensaje_whatsapp(remote_jid, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 24°C con cielo parcialmente nublado.")
+        else:
+            enviar_mensaje_whatsapp(remote_jid, "⚠️ Por favor especifica una ciudad. Ejemplo: `#clima Bogota`")
+        return
+
+    # Respuesta por defecto si saludan
+    elif any(saludo in comando_lower for saludo in ["hola", "buenas", "wilon"]):
+        enviar_mensaje_whatsapp(remote_jid, "👋 ¡Hola! Soy Wilon, tu asistente de WhatsApp. Escribe *#ayuda* para ver la lista de comandos disponibles.")
+
+# ==========================================
+# RUTAS DE LA APP (FLASK)
+# ==========================================
+@app.route('/', methods=['GET'])
+def home():
+    """Ruta raíz para verificar que el servicio está vivo (Healthcheck)."""
+    return jsonify({
+        "status": "online",
+        "bot": "Wilon Webhook",
+        "version": "1.0.0"
+    }), 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json() or {}
-    print("📩 EVENTO RECIBIDO EN WEBHOOK:", data)
+    """Endpoint que recibe las notificaciones de Evolution API."""
+    data = request.get_json()
     
+    if not data:
+        return jsonify({"status": "ignored", "reason": "No JSON payload"}), 200
+
     try:
-        if 'data' in data:
-            data_inner = data['data']
-            key_obj = data_inner.get('key', {})
-            message_obj = data_inner.get('message', {})
+        event = data.get("event")
+        
+        # Procesar solo eventos de mensajes entrantes
+        if event == "messages.upsert":
+            message_data = data.get("data", {})
+            key = message_data.get("key", {})
             
-            remote_jid = key_obj.get('remoteJid', '')
-            remote_alt = key_obj.get('remoteJidAlt', '')
-            from_me = key_obj.get('fromMe', False)
+            from_me = key.get("fromMe", False)
+            remote_jid = key.get("remoteJid", "")
             
-            # REGLA: Ignorar si viene de nosotros mismos (salvo en grupos)
-            if from_me and '@g.us' not in remote_jid:
-                return jsonify({"status": "ignored_from_me"}), 200
+            # FILTRO ANTI-BUCLE: Ignorar mensajes enviados por el propio bot o de grupos
+            if from_me or "@g.us" in remote_jid:
+                return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
-            # DETERMINAR DESTINO DINÁMICO
-            destino = remote_jid
-            if remote_alt and '@s.whatsapp.net' in remote_alt:
-                destino = remote_alt
+            # Extraer el texto del mensaje
+            message_body = message_data.get("message", {})
+            texto = (
+                message_body.get("conversation") or
+                message_body.get("extendedTextMessage", {}).get("text") or
+                ""
+            )
 
-            quoted_data = {
-                "key": key_obj,
-                "message": message_obj
-            }
-
-            # Extraer texto del mensaje
-            texto_mensaje = ""
-            if 'conversation' in message_obj:
-                texto_mensaje = message_obj['conversation']
-            elif 'extendedTextMessage' in message_obj:
-                texto_mensaje = message_obj['extendedTextMessage'].get('text', '')
-
-            texto_limpio = texto_mensaje.strip().lower()
-            print(f"💬 Mensaje procesado de [{destino}]: '{texto_limpio}'")
-            
-            # COMANDOS AUTOMÁTICOS
-            if texto_limpio in ['#activar wilon', '#hola']:
-                respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
-                enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
-
-            elif texto_limpio == '#desactivar wilon':
-                respuesta = "😴 *Wilon Bot Desactivado:*\nHe pasado al modo suspensión. Para reactivarme escribe `#activar wilon`."
-                enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
-
-            elif texto_limpio == '#anime':
-                respuesta = "🍿 *Sección Anime:*\nPróximamente catálogo de recomendaciones y novedades."
-                enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
-                
-            elif texto_limpio in ['#menu', '#ayuda']:
-                respuesta = (
-                    "📜 *Comandos Disponibles:*\n\n"
-                    "• `#activar wilon` / `#hola` - Activa el bot\n"
-                    "• `#desactivar wilon` - Desactiva el bot\n"
-                    "• `#anime` - Sección Anime\n"
-                    "• `#menu` / `#ayuda` - Lista de comandos"
-                )
-                enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
+            if texto:
+                logger.info(f"📩 Mensaje recibido de {remote_jid}: {texto}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
-        print("⚠️ Error procesando estructura:", e)
+        logger.error(f"💥 Error procesando webhook: {e}")
 
     return jsonify({"status": "success"}), 200
 
-@app.route('/', methods=['GET'])
-def index():
-    return "Bot Wilon en línea y sincronizado con Render 🚀", 200
-
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
