@@ -16,8 +16,11 @@ API_KEY = "MiClaveSuperSecreta123"
 
 def enviar_mensaje_whatsapp(destino_jid, texto):
     """
-    Envía la respuesta a WhatsApp manejando tanto grupos (@g.us),
-    números reales (@s.whatsapp.net) y chats privados con privacidad LID (@lid).
+    Envía la respuesta a WhatsApp al destino correcto.
+    Admite:
+    - ID de Grupos (@g.us)
+    - Números directos (@s.whatsapp.net)
+    - Identificadores de privacidad LID (@lid)
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -26,7 +29,6 @@ def enviar_mensaje_whatsapp(destino_jid, texto):
         "apikey": API_KEY
     }
     
-    # Extraer únicamente el número o ID limpio para el campo 'number'
     numero_limpio = destino_jid.split('@')[0] if '@' in destino_jid else destino_jid
 
     payload = {
@@ -40,7 +42,7 @@ def enviar_mensaje_whatsapp(destino_jid, texto):
         }
     }
     
-    # Si el destino es un chat con LID o Grupo, enviamos el remoteJid dentro de options
+    # Para grupos o LID aseguramos el remoteJid exacto en las opciones
     if '@lid' in destino_jid or '@g.us' in destino_jid:
         payload["options"]["remoteJid"] = destino_jid
 
@@ -70,17 +72,22 @@ def webhook():
             # ----------------------------------------------------
             # REGLA DEL DUEÑO DEL QR (fromMe)
             # ----------------------------------------------------
+            # Ignorar autoservicio en privados para no auto-responderte en tu propio chat
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me_private"}), 200
 
             # ----------------------------------------------------
-            # DETERMINAR DESTINO EXACTO DE RESPUESTA
+            # DETERMINAR DESTINO EXACTO (GRUPOS VS PRIVADOS)
             # ----------------------------------------------------
             if '@g.us' in remote_jid:
+                # 1. En GRUPOS: El destino es directamente la ID del grupo (@g.us)
+                #    No requiere mencion de @bot
                 destino = remote_jid
             elif remote_alt and '@s.whatsapp.net' in remote_alt:
+                # 2. Chat Privado con emisor directo
                 destino = remote_alt
             else:
+                # 3. Chat Privado o LID
                 destino = remote_jid
 
             # ----------------------------------------------------
