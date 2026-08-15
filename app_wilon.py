@@ -5,19 +5,17 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # ----------------------------------------------------
-# CONFIGURACIÓN DE EVOLUTION API
+# CONFIGURACIÓN EXACTA DESDE TUS VARIABLES DE RENDER
 # ----------------------------------------------------
-EVOLUTION_API_URL = "https://evolution-wilon-api.onrender.com"
-INSTANCE_NAME = "wilon"
-
-# API Key Maestra
-API_KEY = "MiClaveSuperSecreta123"
+EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-api-wilon.onrender.com").rstrip('/')
+INSTANCE_NAME = os.getenv("EVOLUTION_INSTANCE", "wilon")
+API_KEY = os.getenv("EVOLUTION_API_KEY", "42267431-8921-4d83-a9d5-31a89c211234")
 
 
 def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
     """
-    Envía la respuesta a WhatsApp forzando el identificador original
-    en las opciones profundas para evitar que la API lo sobreescriba.
+    Envía la respuesta a WhatsApp usando la URL y API Key
+    exactas de Render.
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -34,7 +32,6 @@ def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
         "options": {
             "presence": "composing",
             "linkPreview": False,
-            # FORZAMOS A QUE LA API RESPETE EL @lid O @g.us AQUÍ
             "remoteJid": destino
         }
     }
@@ -43,10 +40,13 @@ def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
         payload["quoted"] = quoted_data
 
     try:
-        response = requests.post(url, json=payload, headers=headers)
+        print(f"🔗 Apuntando a: {url}")
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         print(f"📤 Respuesta enviada a [{destino}] (HTTP {response.status_code}):", response.text)
+        return response.status_code
     except Exception as e:
-        print("❌ Error de red al enviar mensaje por HTTP:", e)
+        print("❌ Error de conexión al enviar mensaje:", e)
+        return None
 
 
 @app.route('/webhook', methods=['POST'])
@@ -64,23 +64,21 @@ def webhook():
             remote_alt = key_obj.get('remoteJidAlt', '')
             from_me = key_obj.get('fromMe', False)
             
-            # REGLA DEL DUEÑO DEL QR (fromMe)
+            # REGLA: Ignorar si viene de nosotros mismos (salvo en grupos)
             if from_me and '@g.us' not in remote_jid:
-                return jsonify({"status": "ignored_from_me_private"}), 200
+                return jsonify({"status": "ignored_from_me"}), 200
 
-            # DETERMINAR DESTINO (Aceptando el LID tal cual viene)
-            if '@g.us' in remote_jid:
-                destino = remote_jid
-            elif remote_alt and '@s.whatsapp.net' in remote_alt:
+            # DETERMINAR DESTINO
+            destino = remote_jid
+            if remote_alt and '@s.whatsapp.net' in remote_alt:
                 destino = remote_alt
-            else:
-                destino = remote_jid
 
             quoted_data = {
                 "key": key_obj,
                 "message": message_obj
             }
 
+            # Extraer texto del mensaje
             texto_mensaje = ""
             if 'conversation' in message_obj:
                 texto_mensaje = message_obj['conversation']
@@ -90,7 +88,7 @@ def webhook():
             texto_limpio = texto_mensaje.strip().lower()
             print(f"💬 Mensaje procesado de [{destino}]: '{texto_limpio}'")
             
-            # LÓGICA DE COMANDOS
+            # COMANDOS AUTOMÁTICOS
             if texto_limpio in ['#activar wilon', '#hola']:
                 respuesta = "🤖 *Wilon Bot Activado:*\n¡Hola! Estoy activo en este chat. ¿En qué te puedo colaborar?"
                 enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
@@ -114,13 +112,13 @@ def webhook():
                 enviar_mensaje_whatsapp(destino, respuesta, quoted_data)
 
     except Exception as e:
-        print("⚠️ Error al procesar la estructura del mensaje:", e)
+        print("⚠️ Error procesando estructura:", e)
 
     return jsonify({"status": "success"}), 200
 
 @app.route('/', methods=['GET'])
 def index():
-    return "Bot funcionando", 200
+    return "Bot Wilon en línea y sincronizado con Render 🚀", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
