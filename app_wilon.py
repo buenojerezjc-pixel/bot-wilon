@@ -14,8 +14,8 @@ API_KEY = os.getenv("EVOLUTION_API_KEY", "42267431-8921-4d83-a9d5-31a89c211234")
 
 def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
     """
-    Envía la respuesta a WhatsApp usando la URL y API Key
-    exactas de Render.
+    Envía la respuesta a WhatsApp desactivando checkNumber para soportar
+    chats normales, grupos y destinatarios @lid de forma automática.
     """
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     
@@ -32,6 +32,7 @@ def enviar_mensaje_whatsapp(destino, texto, quoted_data=None):
         "options": {
             "presence": "composing",
             "linkPreview": False,
+            "checkNumber": False,
             "remoteJid": destino
         }
     }
@@ -68,7 +69,7 @@ def webhook():
             if from_me and '@g.us' not in remote_jid:
                 return jsonify({"status": "ignored_from_me"}), 200
 
-            # DETERMINAR DESTINO
+            # DETERMINAR DESTINO DINÁMICO
             destino = remote_jid
             if remote_alt and '@s.whatsapp.net' in remote_alt:
                 destino = remote_alt
