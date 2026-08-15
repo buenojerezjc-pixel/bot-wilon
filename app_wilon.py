@@ -25,21 +25,17 @@ bot_activo = True
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
 def enviar_mensaje_whatsapp(remote_jid, texto):
-    """Envía un mensaje de texto a WhatsApp asegurando que sea a un número válido."""
-    
-    # Si el ID termina en @lid, no se le puede enviar directamente
-    if "@lid" in str(remote_jid):
-        logger.warning(f"⚠️ Se omitió el envío a {remote_jid} porque es un ID @lid no soportado por el envío directo de WhatsApp.")
-        return False
-
+    """Envía un mensaje de texto respondiendo directamente al remoteJid del chat."""
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
     headers = {
         "apikey": EVOLUTION_API_KEY,
         "Content-Type": "application/json"
     }
     
+    # Para responder a cuentas @lid o estándar, se envía la propiedad remoteJid o number con el ID completo
     payload = {
         "number": remote_jid,
+        "remoteJid": remote_jid,
         "options": {
             "delay": 1200,
             "presence": "composing"
@@ -126,7 +122,7 @@ def procesar_comando(texto_mensaje, remote_jid):
         enviar_mensaje_whatsapp(remote_jid, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
         return
 
-    # Si el bot está desactivado, ignora
+    # Si el bot está desactivado, ignora el comando
     if not bot_activo:
         logger.info("⏸️ Bot desactivado: Comando ignorado.")
         return
@@ -207,20 +203,10 @@ def webhook():
             key = data.get("key", {})
             
             from_me = key.get("fromMe", False)
-            
-            # 1. Intentar obtener el número real si viene de un evento
-            participant = key.get("participant") or data.get("participant") or ""
             remote_jid = key.get("remoteJid", "")
-            
-            # Determinar el ID real dando prioridad a los números con @s.whatsapp.net
-            target_jid = remote_jid
-            if "@s.whatsapp.net" in participant:
-                target_jid = participant
-            elif "@s.whatsapp.net" not in str(remote_jid) and "sender" in data and "@s.whatsapp.net" in str(data["sender"]):
-                target_jid = data["sender"]
 
             # FILTRO ANTI-BUCLE: Ignorar mensajes propios o de grupos
-            if from_me or "@g.us" in str(target_jid):
+            if from_me or "@g.us" in str(remote_jid):
                 return jsonify({"status": "ignored", "reason": "Self or group message"}), 200
 
             # Extraer texto del mensaje
@@ -232,8 +218,8 @@ def webhook():
             )
 
             if texto:
-                logger.info(f"📩 Mensaje recibido de {target_jid}: {texto}")
-                procesar_comando(texto, target_jid)
+                logger.info(f"📩 Mensaje recibido de {remote_jid}: {texto}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
         logger.error(f"💥 Error procesando webhook: {e}")
