@@ -19,7 +19,7 @@ INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 bot_activo = True
 
 # ==========================================
-# ENVÍO DE MENSAJES (ESTRUCTURA ESTRICTA V1.8.X)
+# ENVÍO DE MENSAJES
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
@@ -28,11 +28,8 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         "Content-Type": "application/json"
     }
     
-    target_jid = str(destinatario).strip()
-
-    # ESTRUCTURA EXACTA Y OBLIGATORIA QUE EXIGE EVOLUTION API
     payload = {
-        "number": target_jid,
+        "number": str(destinatario).strip(),
         "options": {
             "delay": 0,
             "presence": "composing",
@@ -46,33 +43,29 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a {target_jid}")
-            return True
+            logger.info(f"✅ Mensaje enviado exitosamente a {destinatario}")
         else:
-            logger.error(f"❌ Falló el envío a {target_jid}: {response.text}")
-            return False
-
+            logger.error(f"❌ Falló el envío a {destinatario}: {response.text}")
     except Exception as e:
         logger.error(f"💥 Excepción al enviar mensaje: {e}")
-        return False
 
 # ==========================================
-# LÓGICA DE ANIME
+# LÓGICA DE ANIME Y COMANDOS
 # ==========================================
 def obtener_anime_recomendado():
-    query = '''
-    query {
-      Page(page: 1, perPage: 40) {
-        media(type: ANIME, sort: POPULARITY_DESC) {
-          title { romaji english }
-          episodes
-          score: averageScore
-          genres
-        }
-      }
-    }
-    '''
     try:
+        query = '''
+        query {
+          Page(page: 1, perPage: 40) {
+            media(type: ANIME, sort: POPULARITY_DESC) {
+              title { romaji english }
+              episodes
+              score: averageScore
+              genres
+            }
+          }
+        }
+        '''
         response = requests.post('https://graphql.anilist.co', json={'query': query}, timeout=5)
         if response.status_code == 200:
             animes = response.json()['data']['Page']['media']
@@ -92,9 +85,6 @@ def obtener_anime_recomendado():
         pass
     return "⛩️ *Recomendación Anime:* Te sugiero ver *Dragon Ball*, *One Piece* o *Jujutsu Kaisen*."
 
-# ==========================================
-# PROCESAMIENTO DE COMANDOS (#)
-# ==========================================
 def procesar_comando(texto_mensaje, destinatario):
     global bot_activo
     texto_clean = texto_mensaje.strip()
@@ -113,10 +103,8 @@ def procesar_comando(texto_mensaje, destinatario):
     if not bot_activo:
         return
 
-    # COMANDOS
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo y responde correctamente.")
-
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! El bot Wilon está activo en este chat.")
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
             "🤖 *MENÚ DE WILON* 🤖\n\n"
@@ -126,20 +114,17 @@ def procesar_comando(texto_mensaje, destinatario):
             "▫️ *#desactivar* / *#activar* -> Control del bot."
         )
         enviar_mensaje_whatsapp(destinatario, menu)
-
     elif comando_lower == "#info":
         enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo y Estable")
-
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
-
     elif comando_lower.startswith("#clima"):
         partes = texto_clean.split(" ", 1)
         ciudad = partes[1].strip() if len(partes) > 1 else "tu ciudad"
         enviar_mensaje_whatsapp(destinatario, f"🌤️ El clima reportado para *{ciudad.capitalize()}* es de 22°C.")
 
 # ==========================================
-# WEBHOOK DE FLASK
+# WEBHOOK FLASK
 # ==========================================
 @app.route('/', methods=['GET'])
 def home():
@@ -158,6 +143,10 @@ def webhook():
             remote_jid = key.get("remoteJid", "")
             from_me = key.get("fromMe", False)
             
+            # Condición: No responderse a sí mismo para evitar bucles infinitos
+            if from_me:
+                return jsonify({"status": "ignored"}), 200
+            
             message_body = data.get("message", {})
             texto = (
                 message_body.get("conversation") or
@@ -165,15 +154,10 @@ def webhook():
                 ""
             ).strip()
 
-            if texto and texto.startswith('#'):
-                
-                if from_me and "@g.us" not in remote_jid:
-                    destinatario = data.get("userReceipt") or remote_jid
-                else:
-                    destinatario = remote_jid
-
-                logger.info(f"📩 Procesando comando '{texto}' enviado a: {destinatario}")
-                procesar_comando(texto, destinatario)
+            # Condición: Responde a CUALQUIERA si el texto empieza con #
+            if texto.startswith('#'):
+                logger.info(f"📩 Procesando comando '{texto}' en chat: {remote_jid}")
+                procesar_comando(texto, remote_jid)
 
     except Exception as e:
         logger.error(f"💥 Error en webhook: {e}")
