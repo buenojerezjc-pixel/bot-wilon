@@ -18,6 +18,9 @@ EVOLUTION_API_URL = os.getenv("EVOLUTION_API_URL", "https://evolution-wilon-api.
 EVOLUTION_API_KEY = os.getenv("EVOLUTION_API_KEY", "xaipslkt8olk75y0wlnpj")
 INSTANCE_NAME = os.getenv("INSTANCE_NAME", "wilon")
 
+# Variable global para activar/desactivar el bot
+bot_activo = True
+
 # ==========================================
 # FUNCIONES AUXILIARES DE ENVÍO
 # ==========================================
@@ -101,15 +104,31 @@ def obtener_anime_recomendado():
 
 def procesar_comando(texto_mensaje, remote_jid):
     """Analiza el texto y ejecuta el comando correspondiente usando '#'."""
+    global bot_activo
     texto_clean = texto_mensaje.strip()
     comando_lower = texto_clean.lower()
 
-    # Comando #ping
+    # COMANDOS DE CONTROL DE ESTADO (Funcionan siempre)
+    if comando_lower in ["#activar wilon", "#activar"]:
+        bot_activo = True
+        enviar_mensaje_whatsapp(remote_jid, "🟢 *Wilon activado.* A partir de ahora responderé a todos tus comandos.")
+        return
+
+    elif comando_lower in ["#desactivar wilon", "#desactivar"]:
+        bot_activo = False
+        enviar_mensaje_whatsapp(remote_jid, "🔴 *Wilon desactivado.* El bot ha entrado en modo reposo y no responderá hasta que lo reactives con `#activar wilon` o `#activar`.")
+        return
+
+    # Si el bot está desactivado, ignora el resto de los comandos
+    if not bot_activo:
+        logger.info("⏸️ Bot desactivado: Comando ignorado.")
+        return
+
+    # COMANDOS HABITUALES
     if comando_lower == "#ping":
         enviar_mensaje_whatsapp(remote_jid, "🏓 ¡Pong! El bot Wilon está activo y listo.")
         return
 
-    # Comando #ayuda / #help
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
             "🤖 *MENÚ DE COMANDOS DE WILON* 🤖\n\n"
@@ -117,12 +136,13 @@ def procesar_comando(texto_mensaje, remote_jid):
             "▫️ *#anime* -> Obtén una recomendación de anime al azar.\n"
             "▫️ *#clima <ciudad>* -> Consulta el clima de una ciudad.\n"
             "▫️ *#info* -> Información del sistema.\n"
+            "▫️ *#desactivar wilon* / *#desactivar* -> Pone el bot en reposo.\n"
+            "▫️ *#activar wilon* / *#activar* -> Reactiva el bot.\n"
             "▫️ *#ayuda* -> Muestra este menú."
         )
         enviar_mensaje_whatsapp(remote_jid, menu)
         return
 
-    # Comando #info
     elif comando_lower == "#info":
         info_txt = (
             "⚡ *Wilon Bot System v1.0*\n"
@@ -133,13 +153,11 @@ def procesar_comando(texto_mensaje, remote_jid):
         enviar_mensaje_whatsapp(remote_jid, info_txt)
         return
 
-    # Comando #anime
     elif comando_lower == "#anime":
         respuesta_anime = obtener_anime_recomendado()
         enviar_mensaje_whatsapp(remote_jid, respuesta_anime)
         return
 
-    # Comando #clima
     elif comando_lower.startswith("#clima"):
         partes = texto_clean.split(" ", 1)
         if len(partes) > 1:
@@ -149,7 +167,6 @@ def procesar_comando(texto_mensaje, remote_jid):
             enviar_mensaje_whatsapp(remote_jid, "⚠️ Por favor especifica una ciudad. Ejemplo: `#clima Bogota`")
         return
 
-    # Respuesta por defecto si saludan
     elif any(saludo in comando_lower for saludo in ["hola", "buenas", "wilon"]):
         enviar_mensaje_whatsapp(remote_jid, "👋 ¡Hola! Soy Wilon, tu asistente de WhatsApp. Escribe *#ayuda* para ver la lista de comandos disponibles.")
 
@@ -162,7 +179,8 @@ def home():
     return jsonify({
         "status": "online",
         "bot": "Wilon Webhook",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "bot_activo": bot_activo
     }), 200
 
 @app.route('/webhook', methods=['POST'])
@@ -177,7 +195,7 @@ def webhook():
         event = payload.get("event")
         data = payload.get("data")
         
-        # PROCESAR ÚNICAMENTE EVENTOS DE MENSAJES (Ignora listas de contactos, chats, etc.)
+        # PROCESAR ÚNICAMENTE EVENTOS DE MENSAJES
         if event == "messages.upsert" and isinstance(data, dict):
             key = data.get("key", {})
             
@@ -207,4 +225,4 @@ def webhook():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
