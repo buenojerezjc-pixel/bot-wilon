@@ -115,7 +115,7 @@ def procesar_comando(texto_mensaje, destinatario):
         )
         enviar_mensaje_whatsapp(destinatario, menu)
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.0*\n• Estado: Activo y Estable")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v1.1*\n• Estado: Activo y Estable\n• Nube: Render + MongoDB")
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
     elif comando_lower.startswith("#clima"):
@@ -138,25 +138,27 @@ def webhook():
         event = payload.get("event")
         data = payload.get("data", {})
         
+        # Procesar la llegada de un nuevo mensaje
         if event == "messages.upsert" and isinstance(data, dict):
             key = data.get("key", {})
             remote_jid = key.get("remoteJid", "")
-            from_me = key.get("fromMe", False)
             
-            # Condición: No responderse a sí mismo para evitar bucles infinitos
-            if from_me:
-                return jsonify({"status": "ignored"}), 200
+            # ELIMINAMOS la validación de 'fromMe' para que tú (el dueño) puedas hablar con el bot.
             
             message_body = data.get("message", {})
+            
+            # Extracción robusta de texto: Lee mensajes normales, respuestas y pies de foto
             texto = (
                 message_body.get("conversation") or
                 message_body.get("extendedTextMessage", {}).get("text") or
+                message_body.get("imageMessage", {}).get("caption") or
+                message_body.get("videoMessage", {}).get("caption") or
                 ""
             ).strip()
 
-            # Condición: Responde a CUALQUIERA si el texto empieza con #
+            # Condición estricta: Solo reacciona si el mensaje inicia con #
             if texto.startswith('#'):
-                logger.info(f"📩 Procesando comando '{texto}' en chat: {remote_jid}")
+                logger.info(f"📩 Comando detectado '{texto}' en chat: {remote_jid}")
                 procesar_comando(texto, remote_jid)
 
     except Exception as e:
