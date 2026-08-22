@@ -47,26 +47,39 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # Si es grupo, se usa el JID de grupo completo. Si es privado, se envían solo números.
+    # 1. Estrategia para GRUPOS (@g.us)
     if destinatario_str.endswith("@g.us"):
-        target_number = destinatario_str
-    elif "@lid" in destinatario_str or MI_LID_NUMERICO in destinatario_str:
-        target_number = "573124592327"
+        payload = {
+            "number": destinatario_str,
+            "options": {
+                "delay": 0,
+                "presence": "composing"
+            },
+            "textMessage": {
+                "text": texto
+            }
+        }
+    # 2. Estrategia para CHATS PRIVADOS / LID
     else:
-        target_number = destinatario_str.split("@")[0]
-
-    payload = {
-        "number": target_number,
-        "text": texto,
-        "textMessage": {"text": texto}
-    }
+        if "@lid" in destinatario_str or MI_LID_NUMERICO in destinatario_str:
+            target_number = "573124592327"
+        else:
+            target_number = destinatario_str.split("@")[0]
+            
+        payload = {
+            "number": target_number,
+            "text": texto,
+            "textMessage": {
+                "text": texto
+            }
+        }
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a: {target_number}")
+            logger.info(f"✅ Mensaje enviado exitosamente a: {destinatario_str}")
         else:
-            logger.error(f"❌ Error {response.status_code} al enviar a {target_number}: {response.text}")
+            logger.error(f"❌ Error {response.status_code} al enviar a {destinatario_str}: {response.text}")
     except Exception as e:
         logger.error(f"💥 Excepción al enviar: {e}")
 
