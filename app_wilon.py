@@ -23,36 +23,29 @@ MI_LID_NUMERICO = "101847280934918"
 MI_NUMERO_REAL = "573124592327@s.whatsapp.net"
 
 # ==========================================
-# MAPA Y TRADUCTOR ULTRA FORZADO DE LID
+# TRADUCTOR UNIVERSAL DE LID A NÚMERO REAL
 # ==========================================
-MAPA_LIDS = {
-    "101847280934918": "573124592327@s.whatsapp.net",
-}
-
 def resolver_id(id_recibido):
+    """
+    Traduce cualquier @lid o ID interno a su número real estándar.
+    Mantiene intactos los JIDs de grupos (@g.us).
+    """
     if not id_recibido:
-        return ""
+        return MI_NUMERO_REAL
     
     id_str = str(id_recibido).strip().lower()
-    base_id = id_str.split("@")[0]
     
-    # 1. Búsqueda en mapa directo
-    if base_id in MAPA_LIDS:
-        return MAPA_LIDS[base_id]
-        
-    # 2. Coincidencia con tu LID numérico
-    if MI_LID_NUMERICO in id_str:
+    # Si es un grupo, devolver intacto
+    if id_str.endswith("@g.us"):
+        return id_str
+
+    # Si contiene @lid o coincide con tu LID numérico -> Traducir a número real
+    if "@lid" in id_str or MI_LID_NUMERICO in id_str:
         return MI_NUMERO_REAL
 
-    # 3. Forzar traducción de cualquier @lid de la cuenta principal
-    if "@lid" in id_str:
-        return MI_NUMERO_REAL
-        
-    # 4. Formatear como JID válido de WhatsApp
-    if not id_str.endswith("@s.whatsapp.net") and not id_str.endswith("@g.us"):
-        return f"{base_id}@s.whatsapp.net"
-
-    return id_str
+    # Si no tiene extensión, formatear a WhatsApp estándar
+    base_id = id_str.split("@")[0]
+    return f"{base_id}@s.whatsapp.net"
 
 # ==========================================
 # ENVÍO DE MENSAJES UNIFICADO
@@ -66,18 +59,16 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # 1. Resolver el destinatario (grupos o número real traducido)
+    # Grupos se respetan; chats privados se traducen
     if destinatario_str.endswith("@g.us"):
         destinatario_final = destinatario_str
+        numero_param = destinatario_str
     else:
         destinatario_final = resolver_id(destinatario_str)
-    
-    # 2. Extraer únicamente los dígitos numéricos
-    numero_limpio = destinatario_final.split("@")[0]
+        numero_param = destinatario_final.split("@")[0]
 
-    # 3. Payload compatible con todas las versiones de Evolution API
     payload = {
-        "number": numero_limpio,
+        "number": numero_param,
         "text": texto,
         "textMessage": {"text": texto}
     }
@@ -85,14 +76,14 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Respuesta enviada exitosamente a: {numero_limpio}")
+            logger.info(f"✅ Mensaje enviado a: {numero_param}")
         else:
-            logger.error(f"❌ Error {response.status_code} al enviar a {numero_limpio}: {response.text}")
+            logger.error(f"❌ Error {response.status_code} al enviar a {numero_param}: {response.text}")
     except Exception as e:
         logger.error(f"💥 Excepción al enviar: {e}")
 
 # ==========================================
-# COMANDOS Y JUEGOS DE ROL
+# COMANDOS Y SISTEMA DE ROL
 # ==========================================
 def jugar_ruleta():
     resultado = random.randint(1, 6)
@@ -212,7 +203,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         return
 
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! Bot activo y traductor a 57312 funcionando.")
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! Bot activo en chat y grupos con traducción LID única.")
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
             "🤖 *MENÚ DE WILON* 🤖\n\n"
@@ -229,7 +220,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         )
         enviar_mensaje_whatsapp(destinatario, menu)
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v2.3*\n• Sistema activo con resolución automática LID -> 312.")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v2.5*\n• Traductor LID unificado para emisor y destinatarios privados.")
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
     elif comando_lower == "#ruleta":
@@ -273,11 +264,13 @@ def webhook():
             if not remote_jid or remote_jid == "status@broadcast":
                 return jsonify({"status": "ignored"}), 200
 
+            # 1. Resolver Destinatario
             if remote_jid.endswith("@g.us"):
                 destinatario_final = remote_jid
             else:
                 destinatario_final = resolver_id(remote_jid)
 
+            # 2. Resolver Emisor (Se traduce en ambos escenarios)
             emisor_raw = (
                 data.get("senderPn") or 
                 key.get("participantPn") or 
@@ -300,7 +293,7 @@ def webhook():
             ).strip()
 
             if texto.startswith('#'):
-                logger.info(f"📩 Comando '{texto}' | Destino: {destinatario_final} | Emisor traducido: {emisor_real}")
+                logger.info(f"📩 Comando: {texto} | Destino: {destinatario_final} | Emisor traducido: {emisor_real}")
                 procesar_comando(texto, destinatario_final, emisor_real)
 
     except Exception as e:
