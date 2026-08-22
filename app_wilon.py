@@ -36,7 +36,7 @@ def traducir_emisor(jid):
     return base
 
 # ==========================================
-# ENVÍO COMPATIBLE CON GRUPOS Y PRIVADOS
+# ENVÍO COMPATIBLE CON EVOLUTION API V2
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
@@ -47,29 +47,29 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # 1. Ajuste de Payload compatible con Evolution API v2
+    # Mantenemos el formato "textMessage" que exige Evolution API V2
     if destinatario_str.endswith("@g.us"):
-        payload = {
-            "number": destinatario_str,
-            "text": texto
-        }
+        target = destinatario_str
     else:
         if "@lid" in destinatario_str or MI_LID_NUMERICO in destinatario_str:
-            target_number = MI_NUMERO_REAL
+            target = MI_NUMERO_REAL
         else:
-            target_number = destinatario_str.split("@")[0]
-            
-        payload = {
-            "number": target_number,
+            target = destinatario_str.split("@")[0]
+
+    payload = {
+        "number": target,
+        "text": texto,
+        "textMessage": {
             "text": texto
         }
+    }
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Respuesta entregada con éxito a: {destinatario_str}")
+            logger.info(f"✅ Respuesta entregada con éxito a: {target}")
         else:
-            logger.error(f"❌ Error {response.status_code} al enviar a {destinatario_str}: {response.text}")
+            logger.error(f"❌ Error {response.status_code} al enviar a {target}: {response.text}")
     except Exception as e:
         logger.error(f"💥 Excepción al enviar: {e}")
 
@@ -211,7 +211,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         )
         enviar_mensaje_whatsapp(destinatario, menu)
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v3.0*")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v3.1*")
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
     elif comando_lower == "#ruleta":
@@ -255,7 +255,6 @@ def webhook():
             if not remote_jid or remote_jid == "status@broadcast":
                 return jsonify({"status": "ignored"}), 200
 
-            # Mantiene el grupo como destinatario
             destinatario_final = remote_jid
 
             emisor_raw = (
