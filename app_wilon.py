@@ -36,7 +36,7 @@ def traducir_emisor(jid):
     return base
 
 # ==========================================
-# ENVÍO MULTICANAL (Grupo y Privado)
+# ENVÍO COMPATIBLE CON GRUPOS Y PRIVADOS
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
@@ -47,19 +47,12 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # 1. Si la petición viene de un GRUPO (@g.us)
+    # 1. Ajuste de Payload compatible con Evolution API v2
     if destinatario_str.endswith("@g.us"):
         payload = {
             "number": destinatario_str,
-            "options": {
-                "delay": 0,
-                "presence": "composing"
-            },
-            "textMessage": {
-                "text": texto
-            }
+            "text": texto
         }
-    # 2. Si es CHAT PRIVADO o LID
     else:
         if "@lid" in destinatario_str or MI_LID_NUMERICO in destinatario_str:
             target_number = MI_NUMERO_REAL
@@ -68,10 +61,7 @@ def enviar_mensaje_whatsapp(destinatario, texto):
             
         payload = {
             "number": target_number,
-            "text": texto,
-            "textMessage": {
-                "text": texto
-            }
+            "text": texto
         }
 
     try:
@@ -221,7 +211,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         )
         enviar_mensaje_whatsapp(destinatario, menu)
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v2.9*")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v3.0*")
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
     elif comando_lower == "#ruleta":
@@ -265,10 +255,9 @@ def webhook():
             if not remote_jid or remote_jid == "status@broadcast":
                 return jsonify({"status": "ignored"}), 200
 
-            # 1. El destino respeta el lugar de origen (si vino del grupo se queda en el grupo)
+            # Mantiene el grupo como destinatario
             destinatario_final = remote_jid
 
-            # 2. El emisor se mapea para que la economía use tu número real
             emisor_raw = (
                 data.get("senderPn") or 
                 key.get("participantPn") or 
