@@ -66,24 +66,26 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # TRADUCCIÓN OBLIGATORIA DEL DESTINATARIO
+    # 1. Resolver el destinatario (grupos o número real traducido)
     if destinatario_str.endswith("@g.us"):
         destinatario_final = destinatario_str
     else:
         destinatario_final = resolver_id(destinatario_str)
     
-    # Extraer únicamente los dígitos para la API
+    # 2. Extraer únicamente los dígitos numéricos
     numero_limpio = destinatario_final.split("@")[0]
 
+    # 3. Payload compatible con todas las versiones de Evolution API
     payload = {
         "number": numero_limpio,
-        "text": texto
+        "text": texto,
+        "textMessage": {"text": texto}
     }
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a: {numero_limpio}")
+            logger.info(f"✅ Respuesta enviada exitosamente a: {numero_limpio}")
         else:
             logger.error(f"❌ Error {response.status_code} al enviar a {numero_limpio}: {response.text}")
     except Exception as e:
