@@ -20,23 +20,27 @@ bot_activo = True
 economia_usuarios = {}
 
 MI_LID_NUMERICO = "101847280934918"
-MI_NUMERO_REAL = "573124592327@s.whatsapp.net"
+MI_NUMERO_REAL = "573124592327"
+MI_JID_COMPLETO = "573124592327@s.whatsapp.net"
 
 # ==========================================
-# TRADUCTOR DE EMISOR (Cuentas y Economía)
+# TRADUCTOR UNIFICADO (Fuerza siempre al 312)
 # ==========================================
-def traducir_emisor(jid):
-    """Traduce el LID del emisor a su número real para que conserve sus monedas."""
+def traducir_a_numero_real(jid):
+    """ Convierte LIDs, IDs de grupos o JIDs genéricos al número real """
     if not jid:
         return MI_NUMERO_REAL
     jid_str = str(jid).strip().lower()
-    if "@lid" in jid_str or MI_LID_NUMERICO in jid_str:
+    
+    # Si viene con LID o es tu ID numerico, mapear al numero real
+    if "@lid" in jid_str or MI_LID_NUMERICO in jid_str or jid_str.endswith("@g.us"):
         return MI_NUMERO_REAL
+        
     base = jid_str.split("@")[0]
-    return f"{base}@s.whatsapp.net"
+    return base
 
 # ==========================================
-# ENVÍO DE MENSAJES (Grupo o Privado)
+# ENVÍO GARANTIZADO AL NÚMERO REAL
 # ==========================================
 def enviar_mensaje_whatsapp(destinatario, texto):
     url = f"{EVOLUTION_API_URL}/message/sendText/{INSTANCE_NAME}"
@@ -45,41 +49,23 @@ def enviar_mensaje_whatsapp(destinatario, texto):
         "Content-Type": "application/json"
     }
     
-    destinatario_str = str(destinatario).strip()
-    
-    # 1. Estrategia para GRUPOS (@g.us)
-    if destinatario_str.endswith("@g.us"):
-        payload = {
-            "number": destinatario_str,
-            "options": {
-                "delay": 0,
-                "presence": "composing"
-            },
-            "textMessage": {
-                "text": texto
-            }
+    # Redirigir el destinatario siempre al número limpio (573124592327)
+    target_number = traducir_a_numero_real(destinatario)
+
+    payload = {
+        "number": target_number,
+        "text": texto,
+        "textMessage": {
+            "text": texto
         }
-    # 2. Estrategia para CHATS PRIVADOS / LID
-    else:
-        if "@lid" in destinatario_str or MI_LID_NUMERICO in destinatario_str:
-            target_number = "573124592327"
-        else:
-            target_number = destinatario_str.split("@")[0]
-            
-        payload = {
-            "number": target_number,
-            "text": texto,
-            "textMessage": {
-                "text": texto
-            }
-        }
+    }
 
     try:
         response = requests.post(url, json=payload, headers=headers, timeout=10)
         if response.status_code in [200, 201]:
-            logger.info(f"✅ Mensaje enviado exitosamente a: {destinatario_str}")
+            logger.info(f"✅ Mensaje enviado exitosamente a: {target_number}")
         else:
-            logger.error(f"❌ Error {response.status_code} al enviar a {destinatario_str}: {response.text}")
+            logger.error(f"❌ Error {response.status_code} al enviar a {target_number}: {response.text}")
     except Exception as e:
         logger.error(f"💥 Excepción al enviar: {e}")
 
@@ -99,7 +85,7 @@ def dar_abrazo(persona):
     return f"{emoji} ¡Un gran abrazo para todos!"
 
 def trabajar_rpg(usuario):
-    usuario_real = traducir_emisor(usuario)
+    usuario_real = traducir_a_numero_real(usuario)
     ganancia = random.randint(50, 350)
     trabajos = ["programando un bot", "vendiendo empanadas", "reparando servidores", "minando criptos"]
     trabajo = random.choice(trabajos)
@@ -110,12 +96,12 @@ def trabajar_rpg(usuario):
     return f"💼 Trabajas {trabajo} y ganas *${ganancia} WilonCoins*.\n💰 *Saldo total:* ${saldo_actual} WilonCoins."
 
 def consultar_saldo(usuario):
-    usuario_real = traducir_emisor(usuario)
+    usuario_real = traducir_a_numero_real(usuario)
     saldo = economia_usuarios.get(usuario_real, 0)
     return f"💳 *BANCO WILON*\n💰 Tu saldo actual es: *${saldo} WilonCoins*."
 
 def robar_rpg(usuario, objetivo):
-    usuario_real = traducir_emisor(usuario)
+    usuario_real = traducir_a_numero_real(usuario)
     if not objetivo:
         return "⚠️ *Uso:* `#robar <nombre_o_persona>`"
     
@@ -133,7 +119,7 @@ def robar_rpg(usuario, objetivo):
         return f"🚨 *¡TE ATRAPARON!* Intentaste robarle a *{objetivo}*.\n💸 *Multa:* ${multa} WilonCoins.\n💰 *Saldo actual:* ${nuevo_saldo} WilonCoins."
 
 def regalar_rpg(usuario, texto_argumentos):
-    usuario_real = traducir_emisor(usuario)
+    usuario_real = traducir_a_numero_real(usuario)
     partes = texto_argumentos.split(" ", 1)
     
     if len(partes) < 2 or not partes[0].isdigit():
@@ -204,7 +190,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         return
 
     if comando_lower == "#ping":
-        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! Bot activo respondiendo directo en este chat.")
+        enviar_mensaje_whatsapp(destinatario, "🏓 ¡Pong! Bot activo enviando respuestas al 573124592327.")
     elif comando_lower in ["#ayuda", "#help"]:
         menu = (
             "🤖 *MENÚ DE WILON* 🤖\n\n"
@@ -221,7 +207,7 @@ def procesar_comando(texto_mensaje, destinatario, emisor):
         )
         enviar_mensaje_whatsapp(destinatario, menu)
     elif comando_lower == "#info":
-        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v2.7*")
+        enviar_mensaje_whatsapp(destinatario, "⚡ *Wilon Bot System v2.8*")
     elif comando_lower == "#anime":
         enviar_mensaje_whatsapp(destinatario, obtener_anime_recomendado())
     elif comando_lower == "#ruleta":
@@ -265,20 +251,9 @@ def webhook():
             if not remote_jid or remote_jid == "status@broadcast":
                 return jsonify({"status": "ignored"}), 200
 
-            # 1. El destino es el mismo remoteJid recibido (Si es grupo @g.us se queda en el grupo)
-            destinatario_final = remote_jid
-
-            # 2. El emisor sí se traduce para acumular dinero en la cuenta real
-            emisor_raw = (
-                data.get("senderPn") or 
-                key.get("participantPn") or 
-                key.get("participant") or 
-                data.get("participant") or 
-                data.get("sender") or 
-                (key.get("fromMe") and MI_NUMERO_REAL) or
-                remote_jid
-            )
-            emisor_real = traducir_emisor(emisor_raw)
+            # Forzar siempre la traducción hacia el número real 573124592327
+            destinatario_final = MI_NUMERO_REAL
+            emisor_real = MI_NUMERO_REAL
 
             message_body = data.get("message", {})
             
@@ -291,7 +266,7 @@ def webhook():
             ).strip()
 
             if texto.startswith('#'):
-                logger.info(f"📩 Comando: {texto} | Destino: {destinatario_final} | Emisor traducido: {emisor_real}")
+                logger.info(f"📩 Comando detectado: {texto} | Forzando respuesta a: {destinatario_final}")
                 procesar_comando(texto, destinatario_final, emisor_real)
 
     except Exception as e:
