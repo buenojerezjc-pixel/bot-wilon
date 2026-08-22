@@ -59,20 +59,22 @@ def enviar_mensaje_whatsapp(destinatario, texto):
     
     destinatario_str = str(destinatario).strip()
     
-    # Evaluar si es grupo o chat privado
-    es_grupo = destinatario_str.endswith("@g.us")
-    
-    if es_grupo:
-        target_number = destinatario_str
+    # Manejar si el destinatario es un grupo o usuario individual
+    if destinatario_str.endswith("@g.us"):
+        target_number = destinatario_str  # Mantener @g.us intacto para grupos
     else:
         destinatario_final = resolver_id(destinatario_str)
-        target_number = destinatario_final.split("@")[0]
+        target_number = destinatario_final.split("@")[0]  # Solo dígitos para chats privados
 
-    # Payload universal que cubre mensajes directos y de grupo
     payload = {
         "number": target_number,
-        "text": texto,
-        "textMessage": {"text": texto}
+        "options": {
+            "delay": 0,
+            "presence": "composing"
+        },
+        "textMessage": {
+            "text": texto
+        }
     }
 
     try:
@@ -81,14 +83,6 @@ def enviar_mensaje_whatsapp(destinatario, texto):
             logger.info(f"✅ Respuesta enviada con éxito a: {target_number}")
         else:
             logger.error(f"❌ Error {response.status_code} al enviar a {target_number}: {response.text}")
-            
-            # Reintento de respaldo para grupos si falla el envío estándar
-            if es_grupo:
-                url_grupo = f"{EVOLUTION_API_URL}/group/sendText/{INSTANCE_NAME}"
-                payload_grupo = {"groupJid": target_number, "text": texto}
-                res_g = requests.post(url_grupo, json=payload_grupo, headers=headers, timeout=10)
-                logger.info(f"🔄 Reintento endpoint grupo: {res_g.status_code} - {res_g.text}")
-                
     except Exception as e:
         logger.error(f"💥 Excepción al enviar: {e}")
 
